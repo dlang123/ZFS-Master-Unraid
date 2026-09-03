@@ -2,8 +2,6 @@
 $plugin = "zfs.master";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
 $urlzmadmin = "/plugins/".$plugin."/backend/ZFSMAdmin.php";
-$csrf_token = $_GET['csrf_token'] ?? '';
-
 require_once $docroot."/webGui/include/Helpers.php";
 require_once $docroot."/plugins/".$plugin."/include/ZFSMBase.php";
 require_once $docroot."/plugins/".$plugin."/include/ZFSMHelpers.php";
@@ -142,7 +140,7 @@ input[type=email]{margin-top:8px;float:left}
 				<dl>
 					Dataset Name<br>
 					<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
-					<span class="zfsm-zpool" id="pool" name="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
+					<span class="zfsm-zpool" id="pool" name="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" maxlength="768" pattern="[A-Za-z0-9][A-Za-z0-9_.:%/-]*" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
 					<datalist id="zpool-datasets">
 					<?php
 						generatePoolDatasetOptions($zpool_datasets);
@@ -250,6 +248,21 @@ input[type=email]{margin-top:8px;float:left}
 </html>
 
 <script>
+  var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
+  $.ajaxSetup({
+	headers: { 'X-CSRF-Token': zfsm_csrf_token }
+  });
+
+  function parseJSONResponse(value) {
+	return typeof value === 'string' ? JSON.parse(value) : value;
+  }
+
+  function escapeHtml(value) {
+	return String(value ?? '').replace(/[&<>"']/g, function(char) {
+		return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char];
+	});
+  }
+
   function getFormData(formId) {
 	let formData = {};
     let inputs = $(formId).serializeArray();
@@ -274,15 +287,15 @@ input[type=email]{margin-top:8px;float:left}
   });
    
   function createDataset() {
-	formData = getFormData("#dataset-form");
+	let formData = getFormData("#dataset-form");
 		
-	$.post('<?=$urlzmadmin?>',{cmd: 'createdataset', 'data': formData, 'csrf_token': '<?=$csrf_token?>'}, function(data){
+	$.post('<?=$urlzmadmin?>',{cmd: 'createdataset', 'data': formData, 'csrf_token': zfsm_csrf_token}, function(data){
 		top.Swal2.fire({
 			title: 'Create Result',
 			icon: 'info',
-			html: formatAnswer(JSON.parse(data))
+			html: formatAnswer(parseJSONResponse(data))
 		});
-		top.Shadowbox.close();
+		if (!parseJSONResponse(data).failed || Object.keys(parseJSONResponse(data).failed).length === 0) top.Shadowbox.close();
 	});
   }
 
@@ -294,7 +307,7 @@ input[type=email]{margin-top:8px;float:left}
         if (typeof answer[key] === 'object') {
             result += `${formatAnswer(answer[key], indentLevel + 1)}`;
         } else {
-            result += `${indent}${key}: ${answer[key]}<br>`;
+            result += `${indent}${escapeHtml(key)}: ${escapeHtml(answer[key])}<br>`;
         }
     }
 

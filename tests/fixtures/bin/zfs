@@ -1,0 +1,61 @@
+#!/bin/sh
+
+contains_arg() {
+	needle="$1"
+	shift
+	for arg in "$@"; do
+		[ "$arg" = "$needle" ] && return 0
+	done
+	return 1
+}
+
+last_arg=''
+for arg in "$@"; do last_arg="$arg"; done
+
+if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'filesystem' "$@"; then
+	printf 'tank\t/tmp/zfsm-test-mount\n'
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'filesystem,volume' "$@" && contains_arg '-r' "$@"; then
+	printf 'tank\tfilesystem\t100\t900\t80\toff\t-\t/mnt/tank\tlz4\t1.00x\t20\tnone\t131072\ton\tsa\tall\toff\tsensitive\tstandard\t1700000000\t-\t-\n'
+	printf 'tank/data\tfilesystem\t60\t900\t50\toff\t-\t/mnt/tank/data\tzstd\t1.25x\t10\tnone\t131072\ton\tsa\tall\toff\tsensitive\tstandard\t1700000100\t-\t-\n'
+	printf 'tank/vol\tvolume\t40\t900\t30\toff\t-\t-\tlz4\t1.10x\t10\t-\t-\t-\t-\tall\toff\t-\tstandard\t1700000200\t-\t16384\n'
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-r' "$@"; then
+	printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
+	printf 'tank/data@daily\t2\t50\t2\toff\t0\t1700000400\n'
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; then
+	if [ "$last_arg" = "tank" ]; then
+		printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
+	else
+		printf '%s@daily\t2\t50\t2\toff\t0\t1700000400\n' "$last_arg"
+	fi
+	exit 0
+fi
+
+if [ "$1" = "list" ]; then
+	printf '%s\n' "$last_arg"
+	exit 0
+fi
+
+if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
+	printf 'tank\torg.example:role\tstorage\tlocal\n'
+	printf 'tank/data\torg.example:role\tmedia\tlocal\n'
+	exit 0
+fi
+
+if [ "$1" = "get" ]; then
+	printf '/mnt/tank/data\n'
+	exit 0
+fi
+
+if [ -n "$ZFSM_TEST_LOG" ]; then
+	printf '%s\n' "$*" >> "$ZFSM_TEST_LOG"
+fi
+exit 0

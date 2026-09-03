@@ -1,186 +1,153 @@
 <?php
 
-$plugin = "zfs.master";
-$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$plugin = 'zfs.master';
+$docroot = $docroot ?? ($_SERVER['DOCUMENT_ROOT'] ?? '/usr/local/emhttp');
 
-require_once $docroot."/webGui/include/Helpers.php";
-require_once $docroot."/plugins/".$plugin."/include/ZFSMBase.php";
-require_once $docroot."/plugins/".$plugin."/include/ZFSMError.php";
-require_once $docroot."/plugins/".$plugin."/include/ZFSMHelpers.php";
-require_once $docroot."/plugins/".$plugin."/backend/ZFSMOperations.php";
+require_once $docroot.'/webGui/include/Helpers.php';
+require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMBase.php';
+require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMError.php';
+require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMHelpers.php';
+require_once $docroot.'/plugins/'.$plugin.'/backend/ZFSMOperations.php';
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
+$_POST = is_array($_POST ?? null) ? $_POST : array();
+header('Content-Type: application/json; charset=utf-8');
 
-// Safely handle $_POST without mangling passwords or nested structures
-if (!isset($_POST) || !is_array($_POST)) {
-	$_POST = array();
+function zfsmPostString($key, $default = '') {
+	$value = $_POST[$key] ?? $default;
+	return is_string($value) ? $value : $default;
 }
 
-function resolveAnswerCodes($answer) {
-	foreach($answer['succeeded'] as $key => $value):
-		$answer['succeeded'][$key] = resolve_error($value);
-	endforeach;
-
-	foreach($answer['failed'] as $key => $value):
-		$answer['failed'][$key] = resolve_error($value);
-	endforeach;
-
+function zfsmResolveAnswerCodes($answer) {
+	if (!is_array($answer)) return zfsmFailure('request', 'The operation returned no usable result');
+	$answer['succeeded'] = is_array($answer['succeeded'] ?? null) ? $answer['succeeded'] : array();
+	$answer['failed'] = is_array($answer['failed'] ?? null) ? $answer['failed'] : array();
+	foreach ($answer['succeeded'] as $key => $value) $answer['succeeded'][$key] = resolve_error($value);
+	foreach ($answer['failed'] as $key => $value) $answer['failed'][$key] = resolve_error($value);
 	return $answer;
 }
 
-function returnAnswer($ret, $title, $success_text, $failed_text, $refresh, $unraid_notify) {
-	if ($refresh):
-		refreshData();
-	endif;
-
-	$answer = resolveAnswerCodes($ret);
-
-	if ($unraid_notify == true):
-		if (count($answer['succeeded']) > 0):
-			zfsnotify( $title, $success_text." for:<br>".implodeWithKeys("<br>", $answer['succeeded']), $err,"normal");
-		endif;
-
-		if (count($answer['failed']) > 0):
-			zfsnotify( $title, $failed_text." for:<br>".implodeWithKeys("<br>", $answer['failed']), $err,"warning");
-		endif;
-	endif;
-
-	echo json_encode($answer);
-
-	return;
+function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $refresh = false, $unraid_notify = false) {
+	$answer = zfsmResolveAnswerCodes($ret);
+	if ($refresh && count($answer['succeeded']) > 0) refreshData();
+	if ($unraid_notify) {
+		if ($answer['succeeded']) zfsnotify($title, $success_text.' for:<br>'.implodeWithKeys('<br>', $answer['succeeded']), '', 'normal');
+		if ($answer['failed']) zfsnotify($title, $failed_text.' for:<br>'.implodeWithKeys('<br>', $answer['failed']), '', 'warning');
+	}
+	echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
-switch ($_POST['cmd']) {
-	case 'refresh':
-		refreshData();
-		break;
-	case 'createdataset':
-		$zdataset = $_POST['data']['zpool']."/".$_POST['data']['name'];
-		$zfs_cparams = cleanZFSCreateDatasetParams($_POST['data']);
+function zfsmRequireDestructiveMode($config, $subject) {
+	return (int)($config['destructive_mode'] ?? 0) === 1 ? null : zfsmFailure($subject, 'Destructive Mode is disabled in ZFS Master settings');
+}
 
-		$ret = createDataset( $zdataset, $zfs_cparams);
+try {
+	$command = zfsmPostString('cmd');
+	switch ($command) {
+		case 'refresh':
+			refreshData();
+			zfsmReturnAnswer(array('succeeded' => array('refresh' => 0), 'failed' => array()), 'Refresh', '', '');
+			break;
 
-		returnAnswer($ret, "ZFS Dataset Creation", "Dataset created successfully", "Unable to create dataset", true, false);
+		case 'createdataset':
+			$data = is_array($_POST['data'] ?? null) ? $_POST['data'] : array();
+			$pool = is_string($data['zpool'] ?? null) ? $data['zpool'] : '';
+			$name = is_string($data['name'] ?? null) ? trim($data['name'], '/') : '';
+			$dataset = $pool.($name !== '' ? '/'.$name : '');
+			zfsmReturnAnswer(createDataset($dataset, cleanZFSCreateDatasetParams($data)), 'ZFS Dataset Creation', 'Dataset created successfully', 'Unable to create dataset', true);
+			break;
 
-		break;
-	case 'editdatasetproperty':
-		$array_ret = buildArrayRet();
+		case 'editdatasetproperty':
+			zfsmReturnAnswer(setDatasetProperty(zfsmPostString('zdataset'), zfsmPostString('property'), zfsmPostString('value')), 'ZFS Dataset Edit', 'Dataset edited successfully', 'Unable to edit dataset', true);
+			break;
 
-		$ret = setDatasetProperty($_POST['zdataset'], $_POST['property'], $_POST['value']);
+		case 'getdatasetproperties':
+			echo json_encode(getAllDatasetProperties(zfsmPostString('zdataset'), $zfsm_cfg['znapzend_data'] ?? 0), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
 
-		if ($ret == 0):
-			$array_ret['succeeded'][$_POST['property']] = 0;
-		else:
-			$array_ret['failed'][$_POST['property']] = $ret;
-		endif;
+		case 'adddirectortlisting':
+			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset added successfully', 'Unable to add dataset');
+			break;
 
-		returnAnswer($array_ret, "ZFS Dataset Edit", "Dataset edited successfully", "Unable to edit dataset", true, false);
-		break;
-	case 'getdatasetproperties':
-		$ret = getAllDatasetProperties($_POST['zdataset'], $zfsm_cfg['znapzend_data']);
+		case 'removedirectorylisting':
+			zfsmReturnAnswer(removeFromDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset removed successfully', 'Unable to remove dataset');
+			break;
 
-		echo json_encode($ret);
+		case 'renamedataset':
+			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force')), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset', true);
+			break;
 
-		break;
-	case 'adddirectortlisting':
-		$ret = addToDirectoryListing($_POST['zdataset']);
+		case 'destroydataset':
+			$dataset = zfsmPostString('zdataset');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
+			zfsmReturnAnswer($blocked ?? destroyDataset($dataset, zfsmPostString('force')), 'ZFS Dataset Destroy', 'Dataset destroyed successfully', 'Unable to destroy dataset', true);
+			break;
 
-		returnAnswer($ret, "Directory Listing", "Dataset added successfully", "Unable to add dataset", false, false);
-		break;
-	case 'removedirectorylisting':
-		$ret = removeFromDirectoryListing($_POST['zdataset']);
+		case 'lockdataset':
+			zfsmReturnAnswer(lockDataset(zfsmPostString('zdataset')), 'ZFS Dataset Lock', 'Dataset locked successfully', 'Unable to lock dataset', true);
+			break;
 
-		returnAnswer($ret, "Directory Listing", "Dataset removed successfully", "Unable to remove dataset", false, false);
-		break;
-	case 'renamedataset':
-		$ret = renameDataset($_POST['zdataset'], $_POST['newname'], $_POST['force']);
+		case 'unlockdataset':
+			zfsmReturnAnswer(unlockDataset(zfsmPostString('zdataset'), zfsmPostString('passphrase')), 'ZFS Dataset Unlock', 'Dataset unlocked successfully', 'Unable to unlock dataset', true);
+			break;
 
-		returnAnswer($ret, "ZFS Dataset Rename", "Dataset renamed successfully", "Unable to rename dataset", true, false);
+		case 'promotedataset':
+			zfsmReturnAnswer(promoteDataset(zfsmPostString('zdataset')), 'ZFS Dataset Promote', 'Dataset promoted successfully', 'Unable to promote dataset', true);
+			break;
 
-		break;
-	case 'destroydataset':
-		$ret = destroyDataset($_POST['zdataset'], $_POST['force']);
+		case 'movedirectory':
+			zfsmReturnAnswer(moveDirectory(zfsmPostString('directory'), zfsmPostString('newname')), 'ZFS Directory Move', 'Directory moved successfully', 'Unable to move directory', true);
+			break;
 
-		returnAnswer($ret, "ZFS Dataset Destroy", "Dataset destroyed successfully", "Unable to destroy dataset", true, false);
+		case 'convertdirectory':
+			$directory = zfsmPostString('directory');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
+			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool')), 'ZFS Directory Convert', 'Directory converted successfully', 'Unable to convert directory', true, true);
+			break;
 
-		break;
-	case 'lockdataset':
-		$ret = lockDataset($_POST['zdataset']);
-		
-		returnAnswer($ret, "ZFS Dataset Lock", "Dataset Locked successfully", "Unable to Lock dataset", true, false);
+		case 'deletedirectory':
+			$directory = zfsmPostString('directory');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
+			zfsmReturnAnswer($blocked ?? deleteDirectory($directory, zfsmPostString('force')), 'ZFS Directory Delete', 'Directory deleted successfully', 'Unable to delete directory', true);
+			break;
 
-		break;
-	case 'unlockdataset':
-		$ret = unlockDataset($_POST['zdataset'], $_POST['passphrase']);
-		
-		returnAnswer($ret, "ZFS Dataset Unlock", "Dataset Unlocked successfully", "Unable to Unlock dataset", true, false);
-		
-		break;
-	case 'promotedataset':
-		$ret = promoteDataset($_POST['zdataset'], 0);
+		case 'rollbacksnapshot':
+			zfsmReturnAnswer(rollbackDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('destroy_newer')), 'ZFS Snapshot Rollback', 'Snapshot rolled back successfully', 'Unable to rollback snapshot', true);
+			break;
 
-		returnAnswer($ret, "ZFS Dataset Promote", "Dataset promoted successfully", "Unable to promote dataset", true, false);
-		
-		break;
-	case 'movedirectory':
-		$ret = moveDirectory($_POST['directory'], $_POST['newname']);
+		case 'renamesnapshot':
+			$snapshot = zfsmPostString('snapshot');
+			$pool = explode('/', explode('@', $snapshot, 2)[0], 2)[0];
+			zfsmReturnAnswer(renameDatasetSnapshot($pool, $snapshot, zfsmPostString('newname')), 'ZFS Snapshot Rename', 'Snapshot renamed successfully', 'Unable to rename snapshot', true);
+			break;
 
-		returnAnswer($ret, "ZFS Directory Move", "Directory moved successfully", "Unable to move directory", true, false);
+		case 'holdsnapshot':
+			zfsmReturnAnswer(holdDatasetSnapshot(zfsmPostString('snapshot')), 'ZFS Snapshot Reference', 'Snapshot reference added successfully', 'Unable to add reference');
+			break;
 
-		break;
-	case 'convertdirectory':
-		$ret = convertDirectory($_POST['directory'], $_POST['pool']);
+		case 'releasesnapshot':
+			zfsmReturnAnswer(releaseDatasetSnapshot(zfsmPostString('snapshot')), 'ZFS Snapshot Release', 'Snapshot reference removed successfully', 'Unable to remove reference');
+			break;
 
-		returnAnswer($ret, "ZFS Directory Convert", "Directory converted successfully", "Unable to convert directory", true, true);
+		case 'clonesnapshot':
+			zfsmReturnAnswer(cloneDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('clone')), 'ZFS Snapshot Clone', 'Snapshot cloned successfully', 'Unable to clone snapshot', true);
+			break;
 
-		break;
-	case 'deletedirectory':
-		$ret = deleteDirectory($_POST['directory'], $_POST['force']);
+		case 'destroysnapshot':
+			zfsmReturnAnswer(deleteDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('recursive')), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot', true);
+			break;
 
-		returnAnswer($ret, "ZFS Directory Delete", "Directory deleted successfully", "Unable to delete directory", true, false);
+		case 'snapshotdataset':
+			$snapshot = ($zfsm_cfg['snap_prefix'] ?? '').date($zfsm_cfg['snap_pattern'] ?? 'Y-m-d-His');
+			zfsmReturnAnswer(createDatasetSnapshot(zfsmPostString('zdataset'), $snapshot, zfsmPostString('recursive')), 'ZFS Snapshot Create', 'Snapshot created successfully', 'Unable to create snapshot', true);
+			break;
 
-		break;
-	case 'rollbacksnapshot':
-		$ret = rollbackDatasetSnapshot($_POST['snapshot']);
-
-		returnAnswer($ret, "ZFS Snapshot Rollback", "Snapshot rolled back successfully", "Unable to rollback snapshot", true, false);
-
-		break;
-	case 'holdsnapshot':
-		$ret = holdDatasetSnapshot($_POST['snapshot']);
-
-		returnAnswer($ret, "ZFS Snapshot Reference", "Snapshot reference added successfully", "Unable to add reference", false, false);
-
-		break;
-	case 'releasesnapshot':
-		$ret = releaseDatasetSnapshot($_POST['snapshot']);
-
-		returnAnswer($ret, "ZFS Snapshot Release", "Snapshot reference removed successfully", "Unable to remove reference", false, false);
-
-		break;
-	case 'clonesnapshot':
-		$ret = cloneDatasetSnapshot($_POST['snapshot'], $_POST['clone']);
-
-		returnAnswer($ret, "ZFS Snapshot Clone", "Snapshot cloned successfully", "Unable to clone snapshot", true, false);
-
-		break;
-	case 'destroysnapshot':
-		$ret = destroyDataset($_POST['snapshot'], 0);
-
-		returnAnswer($ret, "ZFS Snapshot Destroy", "Snapshot destroyed successfully", "Unable to destroy snapshot", true, false);
-
-		break;
-	case 'snapshotdataset':
-		$snapshot = $zfsm_cfg['snap_prefix'].date($zfsm_cfg['snap_pattern']);
-
-		$ret = createDatasetSnapshot( $_POST['zdataset'], $snapshot, $_POST['recursive']);
-
-		returnAnswer($ret, "ZFS Snapshot Create", "Snapshot created successfully", "Unable to create snapshot", true, false);
-
-		break;
-	default:
-		echo 'unknown command';
-		break;
+		default:
+			zfsmReturnAnswer(zfsmFailure('request', 'Unknown or missing command'), 'Request', '', '');
+	}
+} catch (Throwable $error) {
+	error_log('ZFS Master backend exception: '.$error->getMessage());
+	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()), 'Request', '', '');
 }
 
 ?>

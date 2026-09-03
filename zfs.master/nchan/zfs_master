@@ -36,6 +36,7 @@ function getData($include_snapshots, $exclusion_pattern, $directory_listing, $ex
     $zpool_global = getZFSPools();
     $zpool_devices = array();
     $zpool_datasets = array();
+    $errors = array();
 
     foreach ($zpool_global as $zpool):
         $zpool_name = $zpool['Pool'];
@@ -47,6 +48,11 @@ function getData($include_snapshots, $exclusion_pattern, $directory_listing, $ex
         else:
             $zpool_datasets[$zpool_name] = getZFSPoolDatasets($zpool_name, $exclusion_pattern, $ext, $directory_listing);
         endif;
+        if (!empty($zpool_datasets[$zpool_name]['_error'])):
+            $errors[$zpool_name] = $zpool_datasets[$zpool_name]['_error'];
+        elseif (!empty($zpool_datasets[$zpool_name]['_snapshot_error'])):
+            $errors[$zpool_name] = $zpool_datasets[$zpool_name]['_snapshot_error'];
+        endif;
         $zpool_global[$zpool_name]['MountPoint'] = $zpool_datasets[$zpool_name]['mountpoint'] ?? '';
     endforeach;
 
@@ -56,6 +62,7 @@ function getData($include_snapshots, $exclusion_pattern, $directory_listing, $ex
     $message['data']['pools'] = $zpool_global;
     $message['data']['devices'] = $zpool_devices;
     $message['data']['datasets'] = $zpool_datasets;
+    $message['data']['errors'] = $errors;
 
     publish('zfs_master', json_encode($message));
 
@@ -70,8 +77,8 @@ function getAllData($exclusion_pattern, $directory_listing, $ext) {
     publish('zfs_master', '{"op":"stop_refresh"}');
 }
 
-function getDatasetsSnapshots($zpool, $zdatasets, $ext) {
-    if (empty($zdatasets) || !is_iterable($zdatasets)) {
+function getDatasetTreeSnapshots($zpool, $zdataset) {
+    if (empty($zdataset) || !is_array($zdataset)) {
         return;
     }
     $message = array();
@@ -79,16 +86,14 @@ function getDatasetsSnapshots($zpool, $zdatasets, $ext) {
     $message['op'] = "getSnapshot";
     $message['data']['pool'] = $zpool;
 
-    foreach ($zdatasets as $zdataset):
-        if (!is_array($zdataset)) continue;
-        $message['data']['dataset'] = $zdataset;
-        $message['data']['snapshots'] = getDatasetSnapshots($zpool, $zdataset['name'] ?? '', $ext);
+    $snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset['name'] ?? '');
+    $message['data']['dataset'] = $zdataset;
+    $message['data']['snapshots'] = $snapshot_result['snapshots'];
+    $message['data']['error'] = $snapshot_result['error'];
+    publish('zfs_master', json_encode($message));
 
-        publish('zfs_master', json_encode($message));
-
-        if (!empty($zdataset['child'])) {
-            getDatasetsSnapshots($zpool, $zdataset['child'], $ext);
-        }
+    foreach ($zdataset['child'] ?? array() as $child):
+        getDatasetTreeSnapshots($zpool, $child);
     endforeach;
 }
 
@@ -100,7 +105,7 @@ function getLazyLoadData($exclusion_pattern, $directory_listing, $ext) {
     if (!empty($message['data']['datasets']) && is_iterable($message['data']['datasets'])) {
         foreach ($message['data']['datasets'] as $zpool):
             if (is_array($zpool)) {
-                getDatasetsSnapshots($zpool['name'] ?? '', $zpool['child'] ?? [], $ext);
+                getDatasetTreeSnapshots($zpool['name'] ?? '', $zpool);
             }
         endforeach;
     }
@@ -120,11 +125,13 @@ $sleep_time = 0.0;
 $iters = 0;
 
 while (true) {
+    try {
     if ($iters > 15):
         if (is_file($config_file) && is_readable($config_file)):
             if (filemtime($config_file) != $zfsm_cfg_timestamp):
                 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
-                $zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
+				$version_data = @parse_ini_file('/etc/unraid-version');
+				$zfsm_cfg['version'] = $version_data['version'] ?? '7.0.0';
                 $zfsm_cfg_timestamp = filemtime("/boot/config/plugins/zfs.master/zfs.master.cfg");
 
                 notifyConfigUpdate($zfsm_cfg);
@@ -157,6 +164,12 @@ while (true) {
 
         $sleep_time = 0.0;
     endif;
+
+    } catch (Throwable $error) {
+        error_log('ZFS Master daemon error: '.$error->getMessage());
+        publish('zfs_master', json_encode(array('op' => 'error', 'data' => array('message' => $error->getMessage()))));
+		publish('zfs_master', '{"op":"stop_refresh"}');
+    }
 
     usleep(150000); 
     $sleep_time += 0.15;

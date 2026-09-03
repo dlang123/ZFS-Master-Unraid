@@ -14,7 +14,15 @@ define("ZFSM_ERR_UNABLE_TO_CREATE_PROC", 1004);
 define("ZFSM_ERR_UNABLE_TO_CREATE_PROC_STR", "Unable to create the process");
 
 
-function resolve_error(int $error_code) {
+function resolve_error($error_code) {
+    if (is_string($error_code)):
+        return $error_code;
+    endif;
+
+    if (!is_int($error_code)):
+        return ZFSM_ERR_UNKNOWN_STR;
+    endif;
+
     if ($error_code < 128):
         return posix_strerror($error_code);
     endif;

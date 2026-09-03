@@ -37,15 +37,14 @@ function loadConfig($config) {
 }
 
 function zfsnotify( $subject, $description, $message, $type="normal") {	
-	$command = $GLOBALS["docroot"].'/plugins/dynamix/scripts/notify -e "ZFS Master" -s "'.$subject.'" -d "'.$description.'" -m "'.$message.'" -i "'.$type.'"';
-
-	shell_exec($command);
+	$notify = ($GLOBALS["docroot"] ?? '/usr/local/emhttp').'/plugins/dynamix/scripts/notify';
+	runProcess($notify, array('-e', 'ZFS Master', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
 }
 
 function fromBytesToString($bytes) {
 	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB'); 
-		
-	$bytes = max($bytes, 0); 
+
+	$bytes = is_numeric($bytes) ? max((float)$bytes, 0) : 0;
    	$pow = floor(($bytes ? log($bytes) : 0) / log(1024)); 
    	$pow = min($pow, count($units) - 1); 
 
@@ -63,18 +62,49 @@ function implodeWithKeys($glue, $array, $symbol = ': ') {
 	);
 }
 	
-function execCommand($cmd_line, &$exec_out) {
-	exec($cmd_line, $out_arr, $val);
+function runProcess($command, $args = array(), $stdin = null) {
+	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
+	if ($test_bin_dir !== false && $test_bin_dir !== '') {
+		$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
+		if (is_file($candidate)) $command = $candidate;
+	}
+	$descriptor_spec = array(
+		0 => array('pipe', 'r'),
+		1 => array('pipe', 'w'),
+		2 => array('redirect', 1)
+	);
+	$cmd = array_merge(array($command), array_values($args));
+	$pipes = array();
+	$process = @proc_open($cmd, $descriptor_spec, $pipes, null, null, array('bypass_shell' => true));
 
-	$tmpout = str_replace("\n", '', implode(' ',$out_arr));
-		
-	$exec_out = escapeshellarg($tmpout);
-		
-	return $val;
+	if (!is_resource($process)) {
+		return array('code' => ZFSM_ERR_UNABLE_TO_CREATE_PROC, 'output' => 'Unable to start '.basename($command));
+	}
+
+	if ($stdin !== null && $stdin !== '') {
+		fwrite($pipes[0], $stdin);
+	}
+	fclose($pipes[0]);
+	$output = stream_get_contents($pipes[1]);
+	fclose($pipes[1]);
+	$code = proc_close($process);
+
+	return array('code' => $code, 'output' => trim((string)$output));
+}
+
+function commandAnswer($subject, $result) {
+	$answer = array('succeeded' => array(), 'failed' => array());
+	if (($result['code'] ?? 1) === 0) {
+		$answer['succeeded'][$subject] = 0;
+	} else {
+		$message = trim((string)($result['output'] ?? ''));
+		$answer['failed'][$subject] = $message !== '' ? $message : (int)($result['code'] ?? 1);
+	}
+	return $answer;
 }
 	
 function cleanZFSCreateDatasetParams($params) {
-	$retParams = $params;
+	$retParams = is_array($params) ? $params : array();
 
 	unset($retParams['zpool']);
 	unset($retParams['name']);
@@ -85,7 +115,7 @@ function cleanZFSCreateDatasetParams($params) {
 		endif;
 	endforeach;
 		
-	if ($retParams['mount'] == 'no'):
+	if (($retParams['mount'] ?? 'yes') == 'no'):
 		$retParams['mountpoint'] = 'none';
 	else:
 		if (!isset($retParams['mountpoint']) || $retParams['mountpoint'] == ''):
@@ -93,8 +123,9 @@ function cleanZFSCreateDatasetParams($params) {
 		endif;
 	endif;
 
-	if ($retParams['encryption'] == 'no'):
-		$retParams['encryption'] = 'off';
+	if (($retParams['encryption'] ?? 'no') == 'no'):
+		unset($retParams['encryption']);
+		unset($retParams['passphrase']);
 	else:
 		if (!isset($retParams['passphrase']) || $retParams['passphrase'] == ''):
 			unset($retParams['encryption']);
@@ -118,55 +149,6 @@ function cleanZFSCreateDatasetParams($params) {
 	return $retParams;
 }
 	
-function processCmdLine($regex, $cmd_line, $cleanfunction) {
-	$data = shell_exec($cmd_line.' 2>&1');
-	$dataArr = @preg_split("/\n/", $data, -1, PREG_SPLIT_NO_EMPTY);
-	$returnData = array();
-		
-	foreach ($dataArr as $dataline):
-		@preg_match($regex, $dataline, $matches);
-
-		if (count($matches) <= 0):
-			continue;
-		endif;
-
-		$returnData[] = $cleanfunction($matches);
-	endforeach;
-
-	return $returnData;
-}
-
-function executeZFSProgram($zprogram, $zpool, $zargs) {
-	$cmd_line = "zfs program -jn -m 20971520 ".escapeshellarg($zpool)." ".$zprogram." ".implode(" ", array_map("escapeshellarg", $zargs));
-	$json_ret = shell_exec($cmd_line.' 2>&1');
-	$decoded = json_decode($json_ret, true);
-	
-	return (is_array($decoded) && isset($decoded['return'])) ? $decoded['return'] : null;
-}
-
-function executeSyncZFSProgram($zprogram, $zpool, $zargs) {
-	$cmd_line = "zfs program -j -m 20971520 ".escapeshellarg($zpool)." ".$zprogram." ".implode(" ", array_map("escapeshellarg", $zargs));
-	$json_ret = shell_exec($cmd_line.' 2>&1');
-	$decoded = json_decode($json_ret, true);
-	
-	return (is_array($decoded) && isset($decoded['return'])) ? $decoded['return'] : null;
-}
-	
-function cleanupZPoolInfo($matched) {
-	return array(
-		'Pool' => trim($matched['pool']),
-		'Health' => trim($matched['health']),
-		'Name' => '',
-		'Size' => trim($matched['size']),
-		'MountPoint' => '',
-		'Refer' => '',
-		'Used' => trim($matched['used']),
-		'Free' => trim($matched['free']),
-		'Snapshots' => '',
-		'Origin' => ''
-	);
-}
-
 function sortDatasetArray($datasetArray) {
 	if (!is_array($datasetArray)) {
 		return array();
@@ -194,13 +176,13 @@ function sortDatasetArray($datasetArray) {
 }
 
 function generatePoolDatasetOptions($dataset_array) {
-	if (count($dataset_array['child']) < 0):
+	if (!isset($dataset_array['child']) || !is_array($dataset_array['child']) || count($dataset_array['child']) <= 0):
 		return;
 	endif;
 	
 	foreach ($dataset_array['child'] as $zdataset):
 		$option = ltrim(stristr($zdataset['name'], '/'), '/')."/";
-		echo '<option value="'.$option.'">';
+		echo '<option value="'.htmlspecialchars($option, ENT_QUOTES, 'UTF-8').'">';
 
 		if (count($zdataset['child']) > 0):
 			generatePoolDatasetOptions($zdataset);

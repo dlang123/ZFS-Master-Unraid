@@ -7,12 +7,9 @@
   <Name>ZFS Master</Name>
   <Description>The ZFS Master plugin provides information and control over the ZFS Pools in your Unraid. Available ZFS Pools are listed under the "Main/ZFSMaster" tab.
   </Description>
-  <MinVer>6.9.2</MinVer>
+  <MinVer>7.3.2</MinVer>
   <Support>https://forums.unraid.net/topic/122261-plugin-zfs-master/</Support>
   <Icon>https://raw.githubusercontent.com/dlang123/ZFS-Master-Unraid/main/zfs.master/images/zfs.master.png</Icon>
   <DonateText>Support development of this fork</DonateText>
   <DonateLink>https://paypal.me/DML</DonateLink>
-  <Requires>
-  **ZFS Plugin**
-  </Requires>
 </Containers>

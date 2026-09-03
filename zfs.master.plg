@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name		"zfs.master">
 <!ENTITY author "dlang123">
-<!ENTITY version "2026.09.03.109">
+<!ENTITY version "2026.09.03.110">
 <!ENTITY launch     "Main">
 <!ENTITY gitURL		"https://raw.githubusercontent.com/dlang123/ZFS-Master-Unraid/main">
 <!ENTITY pluginURL	"&gitURL;/&name;.plg">
@@ -12,17 +12,16 @@
 		author="&author;"
 		version="&version;"
 		pluginURL="&pluginURL;"
-		min="6.9.2">
+		min="7.3.2">
 <CHANGES>
 
 ###2026.09.03
-- Fix - Compatibility with Unraid 7.3.2 (PHP 8 short open tags, CSRF token validation)
-- Fix - zpool list parsing for OpenZFS 2.2+ (robust tab-delimited fallback)
-- Fix - Lua channel program syntax error in destroy snapshot
-- Fix - Lua channel program safe property queries with pcall
-- Fix - WebGUI styling and header alignment on Unraid 7
-- Fix - Undefined variable notices and typo in ZFSMError constants
-- Fix - Unconditional daemon termination in installer scripts
+- Fix - Replaced Lua channel-program inventory with machine-readable OpenZFS CLI queries
+- Fix - Correct dataset hierarchy, root-dataset snapshots, lazy snapshot totals, and query error reporting
+- Fix - Dataset, snapshot, encryption, property, and directory operations use argument-safe process execution
+- Fix - Snapshot delete reporting, rename support, and explicit rollback of newer snapshots
+- Fix - PHP 8.4 compatibility, daemon resilience, output escaping, and request validation
+- Fix - Unraid 7.3.2 packaging, CSRF integration, Nchan startup, and installer handling
 
 ###2024.12.08
 - Add - Config for pulling ZnapZend plans
@@ -207,7 +206,7 @@
 <FILE Run="/bin/bash">
 <INLINE>
 # stop nchan script
-pkill -f zfs_master 2>/dev/null || true
+pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
 if [[ -e /var/run/nchan.pid ]]; then
   sed -ri '/zfs_master$/d' /var/run/nchan.pid
 fi
@@ -217,13 +216,14 @@ fi
 <!-- SOURCE FILE -->
 <FILE Name="/boot/config/plugins/&name;/&name;-&version;.tgz">
 <URL>"&gitURL;/&name;-&version;.tgz"</URL>
+<MD5>321cc52ab39f0300221483f1eea9f6f8</MD5>
 </FILE>
 
 <!-- PLUGIN INSTALL FILE -->
 <FILE Run="/bin/bash">
 <INLINE>
-tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins 2>/dev/null
-find /usr/local/emhttp/plugins/&name; -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+set -e
+tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins
 chmod +x /usr/local/emhttp/plugins/&name;/nchan/zfs_master
 /etc/rc.d/rc.nginx reload 2>/dev/null || true
 
@@ -242,7 +242,7 @@ echo ""
 <FILE Run="/bin/bash" Method="remove">
 <INLINE>
 echo "Removing &name;..."
-pkill -f zfs_master 2>/dev/null || true
+pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
 if [[ -e /var/run/nchan.pid ]]; then
   sed -ri '/zfs_master$/d' /var/run/nchan.pid
 fi

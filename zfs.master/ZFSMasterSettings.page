@@ -69,16 +69,15 @@ _(Destructive Mode)_:
 
 <div id="title" class="nocontrol">_(Datasets)_</div>
 _(Datasets Exclusion Patterns (Just One!))_:
-: <textarea name="exclusion" cols="40" rows="1" placeholder="/dockerfiles/.*"><?=$zfsm_cfg['dataset_exclusion']?></textarea>
+: <textarea name="exclusion" cols="40" rows="1" placeholder="/dockerfiles/.*"><?=htmlspecialchars($zfsm_cfg['dataset_exclusion'], ENT_QUOTES, 'UTF-8')?></textarea>
 
 :zc_settings_datasets_exclusion_plug:
-> Lua pattern to be used for datasets listing exclusion. Dataset descendants and snapshots also will be excluded.
-> Check http://lua-users.org/wiki/PatternsTutorial for further information
+> Regular expression used for dataset-listing exclusion. Descendant datasets and snapshots are also excluded.
 > This definitely speed up the Information refresh process!.
 :end
 
 _(Directory Listing (Dataset names, one per line!))_:
-: <textarea name="directory_listing" cols="40" rows="10" placeholder="mypool/docker&#10;mypool/otherdataset"><?=implode(PHP_EOL ,$zfsm_cfg['directory_listing'])?></textarea>
+: <textarea name="directory_listing" cols="40" rows="10" placeholder="mypool/docker&#10;mypool/otherdataset"><?=htmlspecialchars(implode(PHP_EOL, $zfsm_cfg['directory_listing']), ENT_QUOTES, 'UTF-8')?></textarea>
 
 :zc_settings_directory_listing_plug:
 > Dataset names and not their file paths. Please note that the plugin will only display the first-level directories. 
@@ -93,7 +92,7 @@ _(Dataset Icon Alert Max Days)_:
 :end
 
 _(Snapshots Pattern)_:
-: <input type="text" name="snap_pattern" value="<?=$zfsm_cfg['snap_pattern']?>" placeholder="default Y-m-d-His">
+: <input type="text" name="snap_pattern" value="<?=htmlspecialchars($zfsm_cfg['snap_pattern'], ENT_QUOTES, 'UTF-8')?>" placeholder="default Y-m-d-His">
 
 :zc_settings_snapshots_pattern_plug:
 > Pattern for the name of the snapshots taken through the interface eg: pattern:"Y-m-d-His" snapshot name: "tank/my_dataset@2022-04-13-171920".
@@ -101,7 +100,7 @@ _(Snapshots Pattern)_:
 :end
 
 _(Snapshots Prefix (Do not include the '@' or spaces))_:
-: <input type="text" name="snap_prefix" value="<?=$zfsm_cfg['snap_prefix']?>" placeholder="default blank">
+: <input type="text" name="snap_prefix" value="<?=htmlspecialchars($zfsm_cfg['snap_prefix'], ENT_QUOTES, 'UTF-8')?>" placeholder="default blank">
 
 :zc_settings_snapshots_prefix_plug:
 > Prefix for the name of the snapshots taken through the interface eg: pattern:"Y-m-d-His", prefix:"zfs-master-" snapshot name: "tank/my_dataset@zfs-master-2022-04-13-171920".

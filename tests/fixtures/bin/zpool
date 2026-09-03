@@ -1,0 +1,25 @@
+#!/bin/sh
+
+if [ "$1" = "list" ]; then
+	printf 'tank\t1.00T\t100G\t900G\tONLINE\n'
+	exit 0
+fi
+
+if [ "$1" = "status" ]; then
+	cat <<'EOF'
+  pool: tank
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	tank        ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sda     ONLINE       0     0     0
+	    sdb     ONLINE       0     0     0
+
+errors: No known data errors
+EOF
+	exit 0
+fi
+
+exit 1

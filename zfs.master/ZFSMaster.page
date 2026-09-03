@@ -99,9 +99,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
 
 <script>
-  var csrf_token = $('input[name="csrf_token"]').val() || (typeof csrf_token !== 'undefined' ? csrf_token : '<?=$csrf_token?>');
+  var zfsm_csrf_token = (typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '<?=htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8')?>';
   $.ajaxSetup({
-    data: { csrf_token: csrf_token }
+	headers: { 'X-CSRF-Token': zfsm_csrf_token }
   });
 
   var zfs_sub = new NchanSubscriber('/sub/zfs_master',{subscriber:'websocket'});
@@ -112,8 +112,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   zfs_sub.on('message', function(data) {
-
-	var msg = JSON.parse(data);
+	var msg;
+	try {
+		msg = parseJSONResponse(data);
+	} catch (error) {
+		console.error('ZFS Master received invalid daemon data', error, data);
+		return;
+	}
     if (msg.op == 'getAll') {
 		updateFullBodyTable(msg.data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
 
@@ -122,25 +127,30 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		updateFullBodyTable(msg.data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
 
         for (const pool in msg.data['pools']) {
-			$('#'+pool+'-attribute-snapshots > span').text('0');
+			$('#'+$.escapeSelector(pool)+'-attribute-snapshots > span').text('0');
 		}
 
 		saveCache(msg.data);
 	} else if (msg.op == 'getSnapshot') {
+		if (msg.data.error) {
+			console.error('ZFS Master snapshot query failed:', msg.data.error);
+			$('#zfsm-last-refresh').text('Snapshot query failed for '+msg.data.dataset.name+': '+msg.data.error).css('color', '#e22828');
+		}
 		updateSnapshotInfo(msg.data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_config['directory_listing']);
 
 		if (hasDirectories(msg.data.dataset)) {
 			updateDatasetDirectoryRows(msg.data.dataset, msg.data['snapshots'], zfsm_config['snap_max_days_alert']);
 		}
 
-		var total_snaps = parseInt($('#'+msg.data['pool']+'-attribute-snapshots > span').text());
-		$('#'+msg.data['pool']+'-attribute-snapshots > span').text(total_snaps+msg.data['snapshots'].length);
+		var poolSelector = '#'+$.escapeSelector(msg.data['pool'])+'-attribute-snapshots > span';
+		var total_snaps = parseInt($(poolSelector).text()) || 0;
+		$(poolSelector).text(total_snaps+msg.data['snapshots'].length);
 
 		updateSnapshotCache(msg.data, total_snaps);
 	} else if (msg.op == 'start_refresh') {
 		const curDate = new Date();
 
-		$('#zfsm-last-refresh').text('Last refresh at '+curDate.toLocaleString('en-US', { hour12: false }));
+		$('#zfsm-last-refresh').css('color', '').text('Last refresh at '+curDate.toLocaleString('en-US', { hour12: false }));
 
 		$('#zfsm-refresh').removeClass('fa-refresh fa-arrows-rotate').addClass('fa-spinner fa-spin');
 
@@ -164,6 +174,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').html(htmlProgress);
 	} else if (msg.op == 'stop_directory_copy') {
 		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').text('');
+	} else if (msg.op == 'error') {
+		console.error('ZFS Master daemon error:', msg.data.message);
+		Swal2.fire({title: 'ZFS Master Error', icon: 'error', text: msg.data.message});
 	}
 
 	processHiddenDatasets();
@@ -183,7 +196,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   })
 
   function requestRefresh() {
-	  $.post('<?=$urlzmadmin?>', {cmd: 'refresh', csrf_token: csrf_token} );
+	  $.post('<?=$urlzmadmin?>', {cmd: 'refresh', csrf_token: zfsm_csrf_token} );
   }
   
   function replaceElementClass(element, oldClass, newClass){
@@ -349,8 +362,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
   
   function createDataset(zpool) {
-	var csrf_token = $('input[name="csrf_token"]').val();	  
-	openBox('<?=$urlcreatedataset?>?zpool='+zpool+'&csrf_token='+csrf_token,'Create Dataset',550,680,false);
+	openBox('<?=$urlcreatedataset?>?zpool='+encodeURIComponent(zpool),'Create Dataset',550,680,false);
   }
 
   function addDirectoryContext(directory, pool, id, destructive_mode) {
@@ -394,51 +406,26 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
     context.attach('#' + id, opts);
   }
 
-  function addDatasetContext(zpool, zdataset, snapscount, id, destructive_mode, encryption, origin) {
+  function addDatasetContext(zpool, zdataset, snapscount, id, destructive_mode, encryption, origin, datasetType) {
 	var opts = [];
 	var edit_opts = [];
 
+	if (datasetType === 'filesystem') {
+		edit_opts.push(
+			{text: _('Mountpoint'), action: function(e) { e.preventDefault(); editDatasetProperty(zdataset, 'mountpoint'); }},
+			{text: _('Quota'), action: function(e) { e.preventDefault(); editDatasetProperty(zdataset, 'quota'); }},
+			{text: _('Record Size'), action: function(e) { e.preventDefault(); editDatasetProperty(zdataset, 'recordsize'); }},
+			{text: _('Access Time (atime)'), action: function(e) { e.preventDefault(); editDatasetProperty(zdataset, 'atime'); }},
+			{text: _('Extended Attributes (xattr)'), action: function(e) { e.preventDefault(); editDatasetProperty(zdataset, 'xattr'); }}
+		);
+	}
+
 	edit_opts.push(
-		{
-			text: _('Mountpoint'),
-			action: function(e) {
-				e.preventDefault();
-				editDatasetProperty(zdataset, 'mountpoint');
-			}
-		},
 		{
 			text: _('Compression'),
 			action: function(e) {
 				e.preventDefault();
 				editDatasetProperty(zdataset, 'compression');
-			}
-		},
-		{
-			text: _('Quota'),
-			action: function(e) {
-				e.preventDefault();
-				editDatasetProperty(zdataset, 'quota');
-			}
-		},
-		{
-			text: _('Record Size'),
-			action: function(e) {
-				e.preventDefault();
-				editDatasetProperty(zdataset, 'recordsize');
-			}
-		},
-		{
-			text: _('Access Time (atime)'),
-			action: function(e) {
-				e.preventDefault();
-				editDatasetProperty(zdataset, 'atime');
-			}
-		},
-		{
-			text: _('Extended Attributes (xattr)'),
-			action: function(e) {
-				e.preventDefault();
-				editDatasetProperty(zdataset, 'xattr');
 			}
 		},
 		{
@@ -544,7 +531,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		});
     }
 
-	if (!zfsm_config['directory_listing'].includes(zdataset)) {
+	if (datasetType !== 'filesystem') {
+		// Volumes have no directory tree.
+	} else if (!zfsm_config['directory_listing'].includes(zdataset)) {
 		opts.push({
 			text: _('Add Directory Listing'),
 			icon: 'fa-folder',
@@ -578,7 +567,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   function takeDatasetSnapshot(zdataset) {
 	  Swal2.fire({
-		  title: '<strong>Take Dataset <br>'+zdataset+'</strong> Snapshot',
+		  title: '<strong>Take Dataset <br>'+escapeHtml(zdataset)+'</strong> Snapshot',
 		  icon: 'question',
 		  html: 'This operation will take a Snapshot of the Dataset, are you sure?',
 		  input: 'checkbox',
@@ -592,7 +581,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Snapshot Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			  });
 		  }
@@ -604,22 +593,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 	switch (property) {
 		case 'mountpoint':
-			return '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new mountpoint (Full path)" value="'+value+'" type="mytext" style="display: flex;">';
+			return '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new mountpoint (Full path)" value="'+escapeHtml(value)+'" type="text" style="display: flex;">';
 		case 'quota':
 			if (value) {
 				value = fromBytesToString(value).replace(/ +/g, '');
 			}
 
-			return '<input id="swal2-input" name="quota" class="swal2-input zfsm-w10" maxlength="7" value="'+value+'">';
+			return '<input id="swal2-input" name="quota" class="swal2-input zfsm-w10" maxlength="16" value="'+escapeHtml(value)+'">';
 		case 'compression':
 			tmpHTML = '<select id="swal2-input" name="compression" class="swal2-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select>';
 			break;
 		case 'recordsize':
-			if (value) {
-				value = fromBytesToString(value).replace(/ +/g, '');
-			}
-
-			tmpHTML ='<select id="swal2-input" name="recordsize" class="zfsm-input"><option value="inherit">Inherit</option><option value="512B">512</option><option value="4KB">4KB</option><option value="8KB">8KB</option><option value="16KB">16KB</option><option value="64KB">64KB</option><option value="128KB">128KB</option><option value="1MB">1MB</option></select>';
+			tmpHTML ='<select id="swal2-input" name="recordsize" class="zfsm-input"><option value="inherit">Inherit</option><option value="512">512 B</option><option value="4096">4 KiB</option><option value="8192">8 KiB</option><option value="16384">16 KiB</option><option value="65536">64 KiB</option><option value="131072">128 KiB</option><option value="1048576">1 MiB</option></select>';
 			break;
 		case 'atime':
 			tmpHTML = '<select id="swal2-input" name="atime" class="zfsm-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="on">On</option></select>';
@@ -640,7 +625,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 	var element = $(tmpHTML);
 
-	element.find('option[value='+value+']').attr('selected', 'selected');
+	element.find('option').filter(function() { return $(this).val() === String(value); }).prop('selected', true);
 	var res = element.prop('outerHTML');
 
 	return res;
@@ -650,10 +635,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	var properties = {};
 
 	$.post('<?=$urlzmadmin?>',{cmd: 'getdatasetproperties', zdataset: zdataset}, function(data) {
-		properties = JSON.parse(data);
+		properties = parseJSONResponse(data);
+		if (properties._error) {
+			Swal2.fire({title: 'Unable to read properties', icon: 'error', text: properties._error});
+			return;
+		}
 
 		Swal2.fire({
-			title: '<strong>'+zdataset+' - '+property+'</strong>',
+			title: '<strong>'+escapeHtml(zdataset)+' - '+escapeHtml(property)+'</strong>',
 			html: getPropertyEditHTML(zdataset, property, properties[property]),
 			showConfirmButton: true,
 			showCancelButton: true,
@@ -670,7 +659,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					Swal2.fire({
 						title: 'Edit Result',
 						icon: 'info',
-						html: formatAnswer(JSON.parse(data))
+						html: formatAnswer(parseJSONResponse(data))
 					});
 				});
 			}
@@ -680,13 +669,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   function adminDatasetSnaps(zpool, zdataset) {
-	  var csrf_token = $('input[name="csrf_token"]').val();	 
-	  openBox('<?=$urladmindatasetsnaps?>?zpool='+zpool+'&zdataset='+zdataset+'&csrf_token='+csrf_token, zdataset+' - Admin Snapshots',680,680,false);
+	openBox('<?=$urladmindatasetsnaps?>?zpool='+encodeURIComponent(zpool)+'&zdataset='+encodeURIComponent(zdataset), zdataset+' - Admin Snapshots',680,680,false);
   }
 
   function unlockDataset(zdataset) {
 	  Swal2.fire({
-		  title: '<strong>Passphrase for '+zdataset+'</strong>',
+		  title: '<strong>Passphrase for '+escapeHtml(zdataset)+'</strong>',
 		  input: 'password',
 		  inputPlaceholder: 'Enter your Passphrase',
 		  inputAttributes: {
@@ -702,7 +690,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Unlock Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			  });
 		  }
@@ -714,7 +702,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		Swal2.fire({
 			title: 'Lock Result',
 			icon: 'info',
-			html: formatAnswer(JSON.parse(data))
+			html: formatAnswer(parseJSONResponse(data))
 		});
 	  });
   }
@@ -724,15 +712,15 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		Swal2.fire({
 			title: 'Promote Result',
 			icon: 'info',
-			html: formatAnswer(JSON.parse(data))
+			html: formatAnswer(parseJSONResponse(data))
 		});
 	  });
   }
 
   function renameDataset(zdataset) {
 	  Swal2.fire({
-		  title: '<strong>New name for '+zdataset+'</strong>',
-		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new name (Full name)" value="'+zdataset+'" type="mytext" style="display: flex;">'+
+		  title: '<strong>New name for '+escapeHtml(zdataset)+'</strong>',
+		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new name (Full name)" value="'+escapeHtml(zdataset)+'" type="mytext" style="display: flex;">'+
 				'<label for="swal2-checkbox" class="swal2-checkbox" style="display: flex;">'+
 				'<input type="checkbox" id="swal2-checkbox">'+
 				'<span class="swal2-label">Force unmount any file systems that need to be unmounted in the process</span>'+
@@ -748,7 +736,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.resetValidationMessage();
 				resolve([
 				  $('#swal2-input').val(),
-				  $('#swal2-checkbox').attr('checked') ? 1 : 0
+				  $('#swal2-checkbox').prop('checked') ? 1 : 0
 				])
 			  }
 		    })
@@ -759,7 +747,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Rename Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			});
 		  }
@@ -772,7 +760,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		Swal2.fire({
 			title: 'Directory Listing Result',
 			icon: 'info',
-			html: formatAnswer(JSON.parse(data))
+			html: formatAnswer(parseJSONResponse(data))
 		});
 	});
   }
@@ -782,18 +770,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		Swal2.fire({
 			title: 'Directory Listing Result',
 			icon: 'info',
-			html: formatAnswer(JSON.parse(data))
+			html: formatAnswer(parseJSONResponse(data))
 		});
 	});
   }
   
   function destroyDataset(zdataset) {
 	  Swal2.fire({
-		  title: '<strong>Destroy Dataset<br>'+zdataset+'</strong>',
+		  title: '<strong>Destroy Dataset<br>'+escapeHtml(zdataset)+'</strong>',
 		  icon: 'warning',
 		  html: 'This operation will destroy the Dataset, <b>which cannot be undone</b>, are you sure?',
 		  input: 'checkbox',
-		  inputPlaceholder: 'Force and Recursively Destroy all Children and Dependents',
+		  inputPlaceholder: 'Force unmount and recursively destroy child datasets/snapshots (external clones are preserved)',
 		  showConfirmButton: true,
 		  confirmButtonText: 'Destroy',
 		  showCancelButton: true
@@ -803,7 +791,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Destroy Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			  });
 		  }
@@ -812,8 +800,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   function moveDirectory(directory) {
 	  Swal2.fire({
-		  title: '<strong>New name for '+directory+'</strong>',
-		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+directory+'" type="mytext" style="display: flex;">',
+		  title: '<strong>New name for '+escapeHtml(directory)+'</strong>',
+		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+escapeHtml(directory)+'" type="mytext" style="display: flex;">',
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
@@ -835,7 +823,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Rename Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			});
 		  }
@@ -844,18 +832,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   function convertDirectory(directory, pool) {
-	if (directory.match(/[^a-zA-Z0-9_\-\ \./]/)) {
+	if (directory.match(/[^a-zA-Z0-9_\-\./:%]/)) {
 		Swal2.fire({
 			title: 'Invalid dataset name',
 			icon: 'warning',
-			html: 'Directory name contains invalid characters for a dataset name, allowed characters:<br><br>Alphanumeric (a-z0-9)<br>space ( )<br>underscore(_)<br>hypen(-)<br>period (.)'
+			html: 'Directory name contains characters ZFS cannot use in a dataset name. Spaces are not supported.'
 		});
 
 		return;
 	}	
 
 	Swal2.fire({
-		  title: '<strong> Convert '+directory+' to Dataset</strong>',
+		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',
 		  html: 'This operation will convert the Directory to a Dataset, <b>The directory will be renamed to &lt;dir&gt;_tmp_&lt;date&gt;</b>; and  the information copy over to the dataset, make sure you have enough space<b>No information is lost in the process</b>',
 		  showConfirmButton: true,
@@ -867,7 +855,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Convert Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			  });
 		  }
@@ -876,7 +864,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   function deleteDirectory(directory) {
 	  Swal2.fire({
-		  title: '<strong>Delete Directory<br>'+directory+'</strong>',
+		  title: '<strong>Delete Directory<br>'+escapeHtml(directory)+'</strong>',
 		  icon: 'warning',
 		  html: 'This operation will delete the Directory, <b>which cannot be undone</b>, are you sure?',
 		  input: 'checkbox',
@@ -890,7 +878,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				Swal2.fire({
 					title: 'Delete Result',
 					icon: 'info',
-					html: formatAnswer(JSON.parse(data))
+					html: formatAnswer(parseJSONResponse(data))
 				});
 			  });
 		  }
@@ -905,7 +893,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
         if (typeof answer[key] === 'object') {
             result += `${formatAnswer(answer[key], indentLevel + 1)}`;
         } else {
-            result += `${indent}${key}: ${answer[key]}<br>`;
+            result += `${indent}${escapeHtml(key)}: ${escapeHtml(answer[key])}<br>`;
         }
     }
 
