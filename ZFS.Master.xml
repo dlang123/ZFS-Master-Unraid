@@ -10,8 +10,8 @@
   <MinVer>6.9.2</MinVer>
   <Support>https://forums.unraid.net/topic/122261-plugin-zfs-master/</Support>
   <Icon>https://raw.githubusercontent.com/dlang123/ZFS-Master-Unraid/main/zfs.master/images/zfs.master.png</Icon>
-  <DonateText>I like expensive things</DonateText>
-  <DonateLink>https://www.paypal.com/paypalme/ikersaint</DonateLink>
+  <DonateText>Support development of this fork</DonateText>
+  <DonateLink>https://paypal.me/DML</DonateLink>
   <Requires>
   **ZFS Plugin**
   </Requires>
