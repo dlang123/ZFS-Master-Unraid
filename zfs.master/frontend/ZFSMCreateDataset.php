@@ -121,14 +121,14 @@ input[type=email]{margin-top:8px;float:left}
   
 </style>
 
-<script src="<?autov('/webGui/javascript/dynamix.js')?>"></script>
-<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/default-fonts.css');?>">
-<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/default-popup.css');?>">
+<script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-popup.css'); ?>">
 
-<script src="<?autov('/webGui/javascript/jquery.filetree.js')?>"></script>
+<script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
 
-<script type="text/javascript" src="<?autov('/plugins/zfs.master/assets/sweetalert2.all.min.js');?>"></script>
-<link type="text/css" rel="stylesheet" href="<?autov('/plugins/zfs.master/assets/sweetalert2.min.css');?>">
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
 
 </head>
 

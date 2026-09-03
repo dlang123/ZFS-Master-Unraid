@@ -21,7 +21,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 ?>
 
 <?php if (file_exists('/usr/local/emhttp/webGui/styles/font-awesome.css')): ?>
-<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/font-awesome.css')?>">
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/font-awesome.css'); ?>">
 <?php endif; ?>
 
 <style type="text/css">	
@@ -51,13 +51,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   
 </style>
 
-<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.ui.css')?>">
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/jquery.ui.css'); ?>">
 
-<script type="text/javascript" src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
-<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
+<script type="text/javascript" src="<?php autov('/webGui/javascript/jquery.switchbutton.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/jquery.switchbutton.css'); ?>">
 
-<script type="text/javascript" src="<?autov('/plugins/zfs.master/assets/sweetalert2.all.min.js');?>"></script>
-<link type="text/css" rel="stylesheet" href="<?autov('/plugins/zfs.master/assets/sweetalert2.min.css');?>">
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
 
 <div id="zfs-master-title" class="title zfs_master_title">
 	<span class="left zfs_bar_text">
@@ -97,7 +97,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 > ZPool Information Tool.
 :end
 
-<script type="text/javascript" src="<?autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js');?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
 
 <script>
   var csrf_token = $('input[name="csrf_token"]').val() || (typeof csrf_token !== 'undefined' ? csrf_token : '<?=$csrf_token?>');
