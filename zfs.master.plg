@@ -224,6 +224,7 @@ fi
 <INLINE>
 tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins 2>/dev/null
 chmod +x /usr/local/emhttp/plugins/&name;/nchan/zfs_master
+/etc/rc.d/rc.nginx reload 2>/dev/null || true
 
 echo ""
 echo "-----------------------------------------------------------"
@@ -246,6 +247,7 @@ if [[ -e /var/run/nchan.pid ]]; then
 fi
 rm -rf /boot/config/plugins/&name;
 rm -rf /usr/local/emhttp/plugins/&name;
+/etc/rc.d/rc.nginx reload 2>/dev/null || true
 echo ""
 echo "-----------------------------------------------------------"
 echo " &name; has been removed."
