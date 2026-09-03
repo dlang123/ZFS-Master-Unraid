@@ -223,7 +223,7 @@ fi
 <FILE Run="/bin/bash">
 <INLINE>
 tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins 2>/dev/null
-sed -i 's/\r$//' /usr/local/emhttp/plugins/&name;/nchan/zfs_master 2>/dev/null || true
+find /usr/local/emhttp/plugins/&name; -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
 chmod +x /usr/local/emhttp/plugins/&name;/nchan/zfs_master
 /etc/rc.d/rc.nginx reload 2>/dev/null || true
 
