@@ -6,7 +6,7 @@ require_once __ROOT__."/include/ZFSMBase.php";
 require_once __ROOT__."/include/ZFSMError.php";
 require_once __ROOT__."/include/ZFSMHelpers.php";
 require_once "/usr/local/emhttp/webGui/include/Helpers.php";
-require_once "$docroot/webGui/include/publish.php";
+require_once "/usr/local/emhttp/webGui/include/publish.php";
 
 #region helpers
 
