@@ -1,6 +1,7 @@
 <?php
 
 function loadConfig($config) {	
+	$config = is_array($config) ? $config : [];
 	$zfsm_ret['refresh_interval'] = isset($config['general']['refresh_interval']) ? intval($config['general']['refresh_interval']) : 30;
 	$zfsm_ret['lazy_load'] = isset($config['general']['lazy_load']) ? intval($config['general']['lazy_load']) : "0";
 	$zfsm_ret['znapzend_data'] = isset($config['general']['znapzend_data']) ? intval($config['general']['znapzend_data']) : "0";
