@@ -24,6 +24,20 @@
 	$script_dataset_destroy = $plugin_scripts."zfs_dataset_destroy.lua";
 	$script_dataset_destroy_snapshot = $plugin_scripts."zfs_dataset_destroy_snapshot.lua";
 	$script_dataset_create_snapshot = $plugin_scripts."zfs_dataset_create_snapshot.lua";
+
+	$GLOBALS["script_pool_get_datasets"] = $script_pool_get_datasets;
+	$GLOBALS["script_pool_get_datasets_ext"] = $script_pool_get_datasets_ext;
+	$GLOBALS["script_pool_get_datasets_snapshots"] = $script_pool_get_datasets_snapshots;
+	$GLOBALS["script_pool_get_datasets_snapshots_ext"] = $script_pool_get_datasets_snapshots_ext;
+	$GLOBALS["script_dataset_get_property"] = $script_dataset_get_property;
+	$GLOBALS["script_dataset_get_properties"] = $script_dataset_get_properties;
+	$GLOBALS["script_dataset_get_properties_ext"] = $script_dataset_get_properties_ext;
+	$GLOBALS["script_dataset_get_snapshots"] = $script_dataset_get_snapshots;
+	$GLOBALS["script_dataset_rename_snapshot"] = $script_dataset_rename_snapshot;
+	$GLOBALS["script_dataset_promote"] = $script_dataset_promote;
+	$GLOBALS["script_dataset_destroy"] = $script_dataset_destroy;
+	$GLOBALS["script_dataset_destroy_snapshot"] = $script_dataset_destroy_snapshot;
+	$GLOBALS["script_dataset_create_snapshot"] = $script_dataset_create_snapshot;
 		
 	$urlzmadmin = "/plugins/".$plugin."/backend/ZFSMAdmin.php";
 	$urlcreatedataset = "/plugins/".$plugin."/frontend/ZFSMCreateDataset.php";
