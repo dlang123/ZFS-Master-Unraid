@@ -138,15 +138,17 @@ function processCmdLine($regex, $cmd_line, $cleanfunction) {
 function executeZFSProgram($zprogram, $zpool, $zargs) {
 	$cmd_line = "zfs program -jn -m 20971520 ".escapeshellarg($zpool)." ".$zprogram." ".implode(" ", array_map("escapeshellarg", $zargs));
 	$json_ret = shell_exec($cmd_line.' 2>&1');
+	$decoded = json_decode($json_ret, true);
 	
-	return json_decode($json_ret, true)['return'];
+	return (is_array($decoded) && isset($decoded['return'])) ? $decoded['return'] : null;
 }
 
 function executeSyncZFSProgram($zprogram, $zpool, $zargs) {
 	$cmd_line = "zfs program -j -m 20971520 ".escapeshellarg($zpool)." ".$zprogram." ".implode(" ", array_map("escapeshellarg", $zargs));
 	$json_ret = shell_exec($cmd_line.' 2>&1');
+	$decoded = json_decode($json_ret, true);
 	
-	return json_decode($json_ret, true)['return'];
+	return (is_array($decoded) && isset($decoded['return'])) ? $decoded['return'] : null;
 }
 	
 function cleanupZPoolInfo($matched) {
@@ -165,20 +167,26 @@ function cleanupZPoolInfo($matched) {
 }
 
 function sortDatasetArray($datasetArray) {
-	if (isset($datasetArray['snapshots']) && $datasetArray['snapshots'] > 0):
+	if (!is_array($datasetArray)) {
+		return array();
+	}
+
+	if (isset($datasetArray['snapshots']) && is_array($datasetArray['snapshots']) && count($datasetArray['snapshots']) > 0):
 		usort($datasetArray['snapshots'], function($item1, $item2) { 
-			return $item1['creation'] <=> $item2['creation'];
+			return ($item1['creation'] ?? 0) <=> ($item2['creation'] ?? 0);
 		});
 	endif;
 
-	if (is_null($datasetArray['child']) || count($datasetArray['child']) <= 0):
+	if (!isset($datasetArray['child']) || is_null($datasetArray['child']) || !is_array($datasetArray['child']) || count($datasetArray['child']) <= 0):
 		return $datasetArray;
 	endif;
 
 	ksort($datasetArray['child']);
 	
 	foreach ($datasetArray['child'] as $dataset):
-		$datasetArray['child'][$dataset['name']] = sortDatasetArray($dataset);
+		if (is_array($dataset) && isset($dataset['name'])) {
+			$datasetArray['child'][$dataset['name']] = sortDatasetArray($dataset);
+		}
 	endforeach;
 	
 	return $datasetArray;

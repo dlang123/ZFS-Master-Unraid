@@ -4,7 +4,10 @@ function get_properties(name)
 	local dataset = {}
 	
 	for idx, property in ipairs(dataset_properties) do
-        dataset[property] = zfs.get_prop(name, property)
+		local ok, val = pcall(zfs.get_prop, name, property)
+		if ok then
+			dataset[property] = val
+		end
 	end
 
 	return dataset;

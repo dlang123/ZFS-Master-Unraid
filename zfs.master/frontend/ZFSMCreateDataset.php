@@ -1,8 +1,8 @@
 <?php
 $plugin = "zfs.master";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
-$urlzmadmin = "/plugins/".$plugin."/include/ZFSMAdmin.php";
-$csrf_token = $_GET['csrf_token'];
+$urlzmadmin = "/plugins/".$plugin."/backend/ZFSMAdmin.php";
+$csrf_token = $_GET['csrf_token'] ?? '';
 
 require_once $docroot."/webGui/include/Helpers.php";
 require_once $docroot."/plugins/".$plugin."/include/ZFSMBase.php";
@@ -11,7 +11,7 @@ require_once $docroot."/plugins/".$plugin."/backend/ZFSMOperations.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 
-$zpool = $_GET['zpool'];
+$zpool = $_GET['zpool'] ?? '';
 $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zfsm_cfg['znapzend_data']);
 ?>
 
@@ -141,10 +141,10 @@ input[type=email]{margin-top:8px;float:left}
 			<div id="dataset-base-options">
 				<dl>
 					Dataset Name<br>
-					<input type="hidden" id="zpool" name="zpool" value="<?echo $zpool?>">
-					<span class="zfsm-zpool" id="pool" name="<?echo $zpool?>"><?echo $zpool?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
+					<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
+					<span class="zfsm-zpool" id="pool" name="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
 					<datalist id="zpool-datasets">
-					<?
+					<?php
 						generatePoolDatasetOptions($zpool_datasets);
 					?>
 					</datalist>

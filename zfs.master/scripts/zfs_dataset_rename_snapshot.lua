@@ -18,4 +18,6 @@ results = {}
 results["succeeded"] = succeeded
 results["failed"] = failed
 
-return rename_snapshot(argv[1], argv[2], argv[3])
+rename_snapshot(argv[1], argv[2], argv[3])
+
+return results

@@ -1,6 +1,7 @@
 <?php
 
-# Special case for Rsync
+define("ZFSM_ERR_UNKNOWN", 1000);
+define("ZFSM_ERR_UNKNOWN_STR", "Unknown Error");
 define("ZFSM_ERR_UNKOWN", 1000);
 define("ZFSM_ERR_UNKOWN_STR", "Unknown Error");
 define("ZFSM_ERR_NOT_IN_CONFIG", 1001);

@@ -154,20 +154,48 @@ function removeFromDirectoryListing($zdataset) {
 #region zpools
 
 function getZFSPools() {
-	$regex = "/^(?'pool'[\w\._\-]+)\s+(?'size'[\d.]+.)\s+(?'used'[\d.]+.)\s+(?'free'[\d.]+.)\s+(?'checkpoint'([\d.]+.)|-)\s+(?'expandz'([\d.]+.)|-)\s+(?'fragmentation'([\d.]+.)|-)\s+(?'usedpercent'[\d.]+.)\s+(?'dedup'[\d.]+.x)\s+(?'health'\w+)/";
-	  
-	$tmpPools = processCmdLine($regex, "zpool list -v", "cleanupZPoolInfo");
 	$retPools = array();
-	  
-	foreach ($tmpPools as $pool):
-		$retPools[$pool["Pool"]] = $pool;
-	endforeach;
-  
+	$cmd_line = "zpool list -H -o name,size,alloc,free,health 2>&1";
+	$output = shell_exec($cmd_line);
+
+	if (!empty($output)) {
+		$lines = explode("\n", trim($output));
+		foreach ($lines as $line) {
+			$line = trim($line);
+			if ($line === '' || strpos($line, 'no pools available') !== false) continue;
+			$parts = explode("\t", $line);
+			if (count($parts) >= 5) {
+				$pool_name = trim($parts[0]);
+				$retPools[$pool_name] = array(
+					'Pool' => $pool_name,
+					'Health' => trim($parts[4]),
+					'Name' => '',
+					'Size' => trim($parts[1]),
+					'MountPoint' => '',
+					'Refer' => '',
+					'Used' => trim($parts[2]),
+					'Free' => trim($parts[3]),
+					'Snapshots' => '',
+					'Origin' => ''
+				);
+			}
+		}
+	}
+
+	// Fallback to legacy regex if tab-separated parsing didn't find any pools
+	if (empty($retPools)) {
+		$regex = "/^(?'pool'[\w\._\-]+)\s+(?'size'[\d.]+.)\s+(?'used'[\d.]+.)\s+(?'free'[\d.]+.)\s+(?'checkpoint'([\d.]+.)|-)\s+(?'expandz'([\d.]+.)|-)\s+(?'fragmentation'([\d.]+.)|-)\s+(?'usedpercent'[\d.]+.)\s+(?'dedup'[\d.]+.x)\s+(?'health'\w+)/";
+		$tmpPools = processCmdLine($regex, "zpool list -v", "cleanupZPoolInfo");
+		foreach ($tmpPools as $pool) {
+			$retPools[$pool["Pool"]] = $pool;
+		}
+	}
+
 	return $retPools;
 }
 
 function getZFSPoolDevices($zpool) {
-	$cmd_line = "zpool status -v ".$zpool." | awk '/config:/{flag=1;next}/errors:/{flag=0}flag{if($1!=\"NAME\" && NF>1)print $1}'|tail -n+2"; 
+	$cmd_line = "zpool status -v ".escapeshellarg($zpool)." | awk '/config:/{flag=1;next}/errors:/{flag=0}flag{if($1!=\"NAME\" && NF>1)print $1}'|tail -n+2"; 
 	return trim(shell_exec($cmd_line.' 2>&1'));
 }
 
@@ -178,9 +206,20 @@ function getZFSPoolDatasets($zpool, $zexc_pattern, $ext, $directory_listing = ar
 		$result = executeZFSProgram($GLOBALS["script_pool_get_datasets_ext"], $zpool, array($zpool, $zexc_pattern));
 	}
 
-	$result['directories'] = listDirectories($result['mountpoint'], $result['child'], $zexc_pattern);
+	if (!is_array($result)) {
+		$result = array(
+			'name' => $zpool,
+			'mountpoint' => '',
+			'child' => array(),
+			'directories' => array()
+		);
+	}
 
-	if (count($directory_listing)):
+	$mountpoint = $result['mountpoint'] ?? '';
+	$child = (isset($result['child']) && is_array($result['child'])) ? $result['child'] : array();
+	$result['directories'] = listDirectories($mountpoint, $child, $zexc_pattern);
+
+	if (count($directory_listing) && isset($result['child']) && is_array($result['child'])):
 		$result['child'] = getDatasetDirectories($result['child'], $directory_listing, $zexc_pattern, $ext);
 	endif;
 	
@@ -194,9 +233,21 @@ function getZFSPoolDatasetsAndSnapshots($zpool, $zexc_pattern, $ext, $directory_
 		$result = executeZFSProgram($GLOBALS["script_pool_get_datasets_snapshots_ext"], $zpool, array($zpool, $zexc_pattern));
 	}
 
-	$result['directories'] = listDirectories($result['mountpoint'], $result['child'], $zexc_pattern);
+	if (!is_array($result)) {
+		$result = array(
+			'name' => $zpool,
+			'mountpoint' => '',
+			'child' => array(),
+			'directories' => array(),
+			'total_snapshots' => 0
+		);
+	}
+
+	$mountpoint = $result['mountpoint'] ?? '';
+	$child = (isset($result['child']) && is_array($result['child'])) ? $result['child'] : array();
+	$result['directories'] = listDirectories($mountpoint, $child, $zexc_pattern);
 	
-	if (count($directory_listing)):
+	if (count($directory_listing) && isset($result['child']) && is_array($result['child'])):
 		$result['child'] = getDatasetDirectories($result['child'], $directory_listing, $zexc_pattern, $ext);
 	endif;
 	
@@ -342,7 +393,7 @@ function lockDataset($zdataset) {
 	$ret = execCommand($cmd_line, $exec_result);
 
 	if ($ret != 0):
-		$array_ret['failed'][$znapshot] = $ret;
+		$array_ret['failed'][$zdataset] = $ret;
 		return $array_ret;
 	endif;
 
@@ -486,7 +537,7 @@ function convertDirectory($directory, $zpool) {
 function moveDirectory($directory, $directory_new_name) {
 	$array_ret = buildArrayRet();
 
-	$cmd_line = "mv ".$force.escapeshellarg($directory)." ".escapeshellarg($directory_new_name).$boutput_str;
+	$cmd_line = "mv ".escapeshellarg($directory)." ".escapeshellarg($directory_new_name).$boutput_str;
 
 	$ret = execCommand($cmd_line, $exec_result);
 	
@@ -546,6 +597,7 @@ function rollbackDatasetSnapshot($znapshot) {
 }
 
 function renameDatasetSnapshot($zpool, $zsnapshot, $znapshot_new_name) {
+	$zdataset = explode("@", $zsnapshot)[0];
 	$array_ret = executeZFSProgram($GLOBALS["script_dataset_rename_snapshot"], $zpool, array($zdataset, $zsnapshot, $znapshot_new_name));
 	
 	return $array_ret;

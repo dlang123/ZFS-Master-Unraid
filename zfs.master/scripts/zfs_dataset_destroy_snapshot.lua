@@ -24,7 +24,7 @@ end
 args = ...
 argv = args["argv"]
 
-if (argv[2] == "1")
+if (argv[2] == "1") then
     destroy_all(argv[1])
 else
     destroy_one(argv[1])

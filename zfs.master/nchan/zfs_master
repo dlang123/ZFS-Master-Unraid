@@ -1,5 +1,5 @@
 #!/usr/bin/php -q
-<?PHP
+<?php
 /* Copyright 2023, IkerSaint
  *
  * This program is free software; you can redistribute it and/or
@@ -9,8 +9,7 @@
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
  */
-?>
-<?
+
 $config_file = "/boot/config/plugins/zfs.master/zfs.master.cfg";
 $docroot = "/usr/local/emhttp";
 $plugin = "zfs.master";

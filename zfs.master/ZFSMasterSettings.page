@@ -13,6 +13,7 @@ $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true), false);
 ?>
    
 <form markdown="1" name="<?=$plugin?>_settings" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="csrf_token" value="<?=$var['csrf_token'] ?? ''?>"/>
 <input type="hidden" name="#file" value="zfs.master/zfs.master.cfg"/>
 <input type="hidden" name="#section" value="general"/>
 <div id="title" class="nocontrol">_(General Settings)_</div>

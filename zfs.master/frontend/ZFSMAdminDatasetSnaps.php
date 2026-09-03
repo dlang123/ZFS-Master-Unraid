@@ -1,17 +1,17 @@
 <?php
 $plugin = "zfs.master";
 $docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
-$urlzmadmin = "/plugins/".$plugin."/include/ZFSMAdmin.php";
+$urlzmadmin = "/plugins/".$plugin."/backend/ZFSMAdmin.php";
 
 require_once $docroot."/webGui/include/Helpers.php";
 require_once $docroot."/plugins/".$plugin."/include/ZFSMBase.php";
 require_once $docroot."/plugins/".$plugin."/include/ZFSMHelpers.php";
 require_once $docroot."/plugins/".$plugin."/backend/ZFSMOperations.php";
 
-$csrf_token = $_GET['csrf_token'];
+$csrf_token = $_GET['csrf_token'] ?? '';
 
-$zpool = $_GET['zpool'];
-$zdataset = $_GET['zdataset'];
+$zpool = $_GET['zpool'] ?? '';
+$zdataset = $_GET['zdataset'] ?? '';
 $snapshots = getDatasetSnapshots($zpool, $zdataset);
 
 ?>
@@ -154,7 +154,7 @@ window.onload = function() {
 		</tr>
 	</thead>
 	<tbody id="zpools">
-		<?
+		<?php
 		foreach ($snapshots as $snap):
 			echo '<tr class="'.$snap['name'].'">';
 			echo '<td class="snapl-delete"><input class="snapl-check" type="checkbox" id="'.$snap['name'].'"></td>';

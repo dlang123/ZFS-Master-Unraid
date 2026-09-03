@@ -1,7 +1,7 @@
 Menu="Main:2"
 Title="ZFS Master"
 Tag="database"
-Cond="file_exists('/usr/sbin/zpool')"
+Cond="file_exists('/usr/sbin/zpool') || file_exists('/sbin/zpool')"
 Nchan="zfs_master"
 ---
 <?php
@@ -13,10 +13,16 @@ require_once $docroot."/plugins/".$plugin."/include/ZFSMHelpers.php";
 require_once $docroot."/webGui/include/Helpers.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
-$zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
+$unraid_ver_file = '/etc/unraid-version';
+$zfsm_cfg['version'] = file_exists($unraid_ver_file) ? (parse_ini_file($unraid_ver_file)['version'] ?? '7.0.0') : '7.0.0';
+$var_ini = @parse_ini_file('/var/local/emhttp/var.ini');
+$csrf_token = $var_ini['csrf_token'] ?? '';
+$is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 ?>
 
-<link type="text/css" rel="stylesheet" href="/webGui/styles/font-awesome.css?v=1545863026">
+<?php if (file_exists('/usr/local/emhttp/webGui/styles/font-awesome.css')): ?>
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/font-awesome.css')?>">
+<?php endif; ?>
 
 <style type="text/css">	
   .zfs_table td span{margin-left:10px}
@@ -40,7 +46,7 @@ $zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
   }
 
   .zfs_master_title {
-	margin-top: -45px!important;
+	margin-top: <?=$is_unraid7 ? '5px' : '-45px!important'?>;
   }
   
 </style>
@@ -58,10 +64,10 @@ $zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
 		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh"></i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="ZFS Master Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="ZFS Master Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
 	</span>
 </div>
 <div id="zfs_master_div">
@@ -94,6 +100,11 @@ $zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
 <script type="text/javascript" src="<?autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js');?>"></script>
 
 <script>
+  var csrf_token = $('input[name="csrf_token"]').val() || (typeof csrf_token !== 'undefined' ? csrf_token : '<?=$csrf_token?>');
+  $.ajaxSetup({
+    data: { csrf_token: csrf_token }
+  });
+
   var zfs_sub = new NchanSubscriber('/sub/zfs_master',{subscriber:'websocket'});
   var zfsm_config = <?=json_encode($zfsm_cfg)?>;
 
@@ -132,10 +143,10 @@ $zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
 
 		$('#zfsm-last-refresh').text('Last refresh at '+curDate.toLocaleString('en-US', { hour12: false }));
 
-		replaceElementClass('#zfsm-refresh', 'fa-refresh', 'fa-spinner fa-spin');
+		$('#zfsm-refresh').removeClass('fa-refresh fa-arrows-rotate').addClass('fa-spinner fa-spin');
 
 	} else if (msg.op == 'stop_refresh') {
-		replaceElementClass('#zfsm-refresh', 'fa-spinner fa-spin', 'fa-refresh');
+		$('#zfsm-refresh').removeClass('fa-spinner fa-spin').addClass('fa-refresh fa-arrows-rotate');
 	} else if (msg.op == 'updateConfig') {
 		zfsm_config = msg.data;
 	} else if (msg.op == 'start_directory_copy') {
@@ -173,7 +184,7 @@ $zfsm_cfg['version'] = parse_ini_file('/etc/unraid-version')['version'];
   })
 
   function requestRefresh() {
-	  $.post('<?=$urlzmadmin?>', {cmd: 'refresh'} );
+	  $.post('<?=$urlzmadmin?>', {cmd: 'refresh', csrf_token: csrf_token} );
   }
   
   function replaceElementClass(element, oldClass, newClass){

@@ -11,7 +11,10 @@ require_once $docroot."/plugins/".$plugin."/backend/ZFSMOperations.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 
-$_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+// Safely handle $_POST without mangling passwords or nested structures
+if (!isset($_POST) || !is_array($_POST)) {
+	$_POST = array();
+}
 
 function resolveAnswerCodes($answer) {
 	foreach($answer['succeeded'] as $key => $value):
@@ -68,7 +71,7 @@ switch ($_POST['cmd']) {
 		if ($ret == 0):
 			$array_ret['succeeded'][$_POST['property']] = 0;
 		else:
-			$array_ret['failed'][$key] = $ret;
+			$array_ret['failed'][$_POST['property']] = $ret;
 		endif;
 
 		returnAnswer($array_ret, "ZFS Dataset Edit", "Dataset edited successfully", "Unable to edit dataset", true, false);

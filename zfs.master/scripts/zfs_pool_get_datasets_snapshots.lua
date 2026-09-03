@@ -14,7 +14,10 @@ function list_snapshots(dataset)
 		snapshot['name'] = snap
 		
 		for idx, property in ipairs(snap_properties) do
-			snapshot[property] = zfs.get_prop(snap, property)
+			local ok, val = pcall(zfs.get_prop, snap, property)
+			if ok then
+				snapshot[property] = val
+			end
 		end
 		
 		total_snapshots = total_snapshots+1
@@ -31,7 +34,10 @@ function list_datasets(root, exclusion_pattern)
 	dataset['name'] = root
 	
 	for idx, property in ipairs(dataset_properties) do
-		dataset[property] = zfs.get_prop(root, property)
+		local ok, val = pcall(zfs.get_prop, root, property)
+		if ok then
+			dataset[property] = val
+		end
 	end
 
 	dataset['child'] = {}

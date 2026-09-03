@@ -10,13 +10,18 @@ function list_datasets(root, exclusion_pattern)
 	dataset['name'] = root
 	
 	for idx, property in ipairs(dataset_properties) do
-		dataset[property] = zfs.get_prop(root, property)
+		local ok, val = pcall(zfs.get_prop, root, property)
+		if ok then
+			dataset[property] = val
+		end
 	end
 
 	for property in zfs.list.user_properties(root) do
-        val, src = zfs.get_prop(root, property)
-        dataset[property] = val
-    end
+		local ok, val, src = pcall(zfs.get_prop, root, property)
+		if ok then
+			dataset[property] = val
+		end
+	end
 
 	dataset['child'] = {}
 	

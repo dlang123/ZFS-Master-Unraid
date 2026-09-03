@@ -5,7 +5,7 @@ function force_promote(dataset)
     errno, details = zfs.check.promote(dataset)
 
     if (errno == EEXIST) then
-        assert(details ~= Nil)
+        assert(details ~= nil)
         for i, snap in ipairs(details) do
             zfs.sync.destroy(dataset .. "@" .. snap)
         end
