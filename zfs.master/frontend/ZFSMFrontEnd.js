@@ -102,30 +102,27 @@ function daysToNow(timestamp) {
 }
 
 function saveToLocalStorage(key, value, encode=true) {
-	if (encode) {
-		localStorage.setItem(key, JSON.stringify(value));
-		return;
+	try {
+		localStorage.setItem(key, encode ? JSON.stringify(value) : value);
+	} catch (error) {
+		console.warn('ZFS Master could not save its browser cache', error);
 	}
-
-	localStorage.setItem(key, value);
 }
 
 function loadFromLocalStorage(key, decode=true) {
-	let value = localStorage.getItem(key);
-
-	if (value === null) {
+	try {
+		const value = localStorage.getItem(key);
+		return value === null ? null : (decode ? JSON.parse(value) : value);
+	} catch (error) {
+		console.warn('ZFS Master ignored an unavailable or invalid browser cache', error);
 		return null;
 	}
-
-	if (decode) {
-		return JSON.parse(value);
-	}
-
-	return value;
 }
 
 function removeFromLocalStorage(key) {
-	localStorage.removeItem(key);
+	try { localStorage.removeItem(key); } catch (error) {
+		console.warn('ZFS Master could not clear its browser cache', error);
+	}
 }
 
 function usage_color(percent, free, display) {
@@ -582,7 +579,7 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	tr += '</td>';
 
 	// Snapshots
-	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots"><i class="fa fa-camera-retro icon"></i><span>'+(zpool['Snapshots'] == null ? 0 : zpool['Snapshots'])+'</span></td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots"><i class="fa fa-camera-retro icon"></i><span>'+(zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'])+'</span></td>';
 
 	return tr; 
 }

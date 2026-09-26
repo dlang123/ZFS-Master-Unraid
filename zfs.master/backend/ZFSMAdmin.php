@@ -12,6 +12,7 @@ require_once $docroot.'/plugins/'.$plugin.'/backend/ZFSMOperations.php';
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $_POST = is_array($_POST ?? null) ? $_POST : array();
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
 
 function zfsmPostString($key, $default = '') {
 	$value = $_POST[$key] ?? $default;
@@ -44,9 +45,24 @@ function zfsmRequireDestructiveMode($config, $subject) {
 try {
 	$command = zfsmPostString('cmd');
 	switch ($command) {
+		case 'inventory':
+		case 'inventorysnapshots':
+			// Use the existing authenticated, CSRF-protected plugin endpoint.
+			$pool = $command === 'inventorysnapshots' ? zfsmPostString('pool') : '';
+			if ($command === 'inventorysnapshots' && $pool === '') throw new InvalidArgumentException('Missing pool name');
+			$answer = zfsmReadInventory($zfsm_cfg, $command === 'inventorysnapshots' || !$zfsm_cfg['lazy_load'], $pool);
+			$answer['config'] = $zfsm_cfg;
+			$answer['publishing_paused'] = is_file('/tmp/publishPaused');
+			echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+			break;
+
 		case 'refresh':
-			refreshData();
-			zfsmReturnAnswer(array('succeeded' => array('refresh' => 0), 'failed' => array()), 'Refresh', '', '');
+			// Compatibility for older clients: an accepted signal is not fresh inventory.
+			if (is_file('/tmp/publishPaused')) {
+				zfsmReturnAnswer(zfsmFailure('refresh', 'Unraid publishing is paused. Reload the updated ZFS Master page to use direct inventory.'), 'Refresh', '', '');
+			} else {
+				zfsmReturnAnswer(refreshData() ? array('succeeded' => array('refresh' => 'Refresh queued'), 'failed' => array()) : zfsmFailure('refresh', 'Unable to queue refresh'), 'Refresh', '', '');
+			}
 			break;
 
 		case 'createdataset':

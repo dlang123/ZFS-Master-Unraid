@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name		"zfs.master">
 <!ENTITY author "dlang123">
-<!ENTITY version "2026.09.03.110">
+<!ENTITY version "2026.09.25.112">
 <!ENTITY launch     "Main">
 <!ENTITY gitURL		"https://raw.githubusercontent.com/dlang123/ZFS-Master-Unraid/main">
 <!ENTITY pluginURL	"&gitURL;/&name;.plg">
@@ -14,6 +14,16 @@
 		pluginURL="&pluginURL;"
 		min="7.3.2">
 <CHANGES>
+
+###2026.09.25
+- Fix - Load inventory directly over HTTP without depending on Nchan, Unraid API, or the background daemon
+- Fix - Preserve progressive snapshot loading, refresh intervals, and manual refresh mode
+- Fix - Refresh the inventory after successful actions, including popup actions
+- Fix - Remove unnecessary nginx reloads during plugin installation and removal
+- Fix - Show status for disabled refresh, failed requests, missing data, and connection errors
+- Fix - Tolerate unavailable or corrupt browser cache without stopping live rendering
+- Fix - Clear the daemon filesystem stat cache before checking refresh and configuration changes
+- Fix - Rebuild the archive from current source, including the popup CSRF fixes
 
 ###2026.09.03
 - Fix - Replaced Lua channel-program inventory with machine-readable OpenZFS CLI queries
@@ -216,7 +226,7 @@ fi
 <!-- SOURCE FILE -->
 <FILE Name="/boot/config/plugins/&name;/&name;-&version;.tgz">
 <URL>"&gitURL;/&name;-&version;.tgz"</URL>
-<MD5>321cc52ab39f0300221483f1eea9f6f8</MD5>
+<MD5>205ed4702dea3cdb335af4cbc880fd93</MD5>
 </FILE>
 
 <!-- PLUGIN INSTALL FILE -->
@@ -225,7 +235,6 @@ fi
 set -e
 tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins
 chmod +x /usr/local/emhttp/plugins/&name;/nchan/zfs_master
-/etc/rc.d/rc.nginx reload 2>/dev/null || true
 
 echo ""
 echo "-----------------------------------------------------------"
@@ -248,7 +257,6 @@ if [[ -e /var/run/nchan.pid ]]; then
 fi
 rm -rf /boot/config/plugins/&name;
 rm -rf /usr/local/emhttp/plugins/&name;
-/etc/rc.d/rc.nginx reload 2>/dev/null || true
 echo ""
 echo "-----------------------------------------------------------"
 echo " &name; has been removed."

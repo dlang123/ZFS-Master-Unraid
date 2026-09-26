@@ -247,10 +247,14 @@ input[type=email]{margin-top:8px;float:left}
 </body>
 </html>
 
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
   $.ajaxSetup({
 	headers: { 'X-CSRF-Token': zfsm_csrf_token }
+  });
+  installZFSMActionRefresh(function() {
+	if (window.parent && typeof window.parent.requestRefresh === 'function') window.parent.requestRefresh();
   });
 
   function parseJSONResponse(value) {
@@ -295,7 +299,11 @@ input[type=email]{margin-top:8px;float:left}
 			icon: 'info',
 			html: formatAnswer(parseJSONResponse(data))
 		});
-		if (!parseJSONResponse(data).failed || Object.keys(parseJSONResponse(data).failed).length === 0) top.Shadowbox.close();
+		if (!parseJSONResponse(data).failed || Object.keys(parseJSONResponse(data).failed).length === 0) {
+			// Refresh before closing the iframe; its global AJAX event may not run after removal.
+			if (typeof top.requestRefresh === 'function') top.requestRefresh();
+			top.Shadowbox.close();
+		}
 	});
   }
 

@@ -1,7 +1,6 @@
 Menu="Main:2"
 Title="ZFS Master"
 Tag="database"
-Nchan="zfs_master"
 ---
 <?php
 $plugin = "zfs.master";
@@ -60,7 +59,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 <div id="zfs-master-title" class="title zfs_master_title">
 	<span class="left zfs_bar_text">
-		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh"></i></a>
+		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh">Starting ZFS Master…</i></a>
 	</span>
 	<span class="zfs_bar_button">
 		<a style="cursor:pointer" class="tooltip" title="ZFS Master Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
@@ -85,7 +84,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		</tr>
 	</thead>
 	<tbody id="zfs_master_body">
-
+		<tr id="zfsm-loading"><td colspan="9">Waiting for ZFS Master to start. If this message remains, check the browser console for an error.</td></tr>
 	</tbody>
 	</table>
 </div>
@@ -97,6 +96,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 :end
 
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 
 <script>
   var zfsm_csrf_token = (typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '<?=htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8')?>';
@@ -104,61 +104,25 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	headers: { 'X-CSRF-Token': zfsm_csrf_token }
   });
 
-  var zfs_sub = new NchanSubscriber('/sub/zfs_master',{subscriber:'websocket'});
+  var zfs_sub = null;
+  var zfsm_inventory = null;
   var zfsm_config = <?=json_encode($zfsm_cfg)?>;
+
+  function zfsmStatus(message, error = false) {
+	$('#zfsm-last-refresh').text(message).css('color', error ? '#e22828' : '');
+	$('#zfsm-loading td').text(message);
+  }
 
   if (zfsm_config['version'].localeCompare('6.12.13', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
 	$('#zfs_master').removeClass('disk_status legacy');
   }
 
-  zfs_sub.on('message', function(data) {
+  function zfsmHandleMessage(data) {
 	var msg;
 	try {
 		msg = parseJSONResponse(data);
-	} catch (error) {
-		console.error('ZFS Master received invalid daemon data', error, data);
-		return;
-	}
-    if (msg.op == 'getAll') {
-		updateFullBodyTable(msg.data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
-
-		saveCache(msg.data);
-    } else if (msg.op == 'getDatasets') {
-		updateFullBodyTable(msg.data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
-
-        for (const pool in msg.data['pools']) {
-			$('#'+$.escapeSelector(pool)+'-attribute-snapshots > span').text('0');
-		}
-
-		saveCache(msg.data);
-	} else if (msg.op == 'getSnapshot') {
-		if (msg.data.error) {
-			console.error('ZFS Master snapshot query failed:', msg.data.error);
-			$('#zfsm-last-refresh').text('Snapshot query failed for '+msg.data.dataset.name+': '+msg.data.error).css('color', '#e22828');
-		}
-		updateSnapshotInfo(msg.data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_config['directory_listing']);
-
-		if (hasDirectories(msg.data.dataset)) {
-			updateDatasetDirectoryRows(msg.data.dataset, msg.data['snapshots'], zfsm_config['snap_max_days_alert']);
-		}
-
-		var poolSelector = '#'+$.escapeSelector(msg.data['pool'])+'-attribute-snapshots > span';
-		var total_snaps = parseInt($(poolSelector).text()) || 0;
-		$(poolSelector).text(total_snaps+msg.data['snapshots'].length);
-
-		updateSnapshotCache(msg.data, total_snaps);
-	} else if (msg.op == 'start_refresh') {
-		const curDate = new Date();
-
-		$('#zfsm-last-refresh').css('color', '').text('Last refresh at '+curDate.toLocaleString('en-US', { hour12: false }));
-
-		$('#zfsm-refresh').removeClass('fa-refresh fa-arrows-rotate').addClass('fa-spinner fa-spin');
-
-	} else if (msg.op == 'stop_refresh') {
-		$('#zfsm-refresh').removeClass('fa-spinner fa-spin').addClass('fa-refresh fa-arrows-rotate');
-	} else if (msg.op == 'updateConfig') {
-		zfsm_config = msg.data;
-	} else if (msg.op == 'start_directory_copy') {
+    // Old/retained daemon inventory must never replace newer HTTP results.
+    if (msg.op == 'start_directory_copy') {
 		Swal2.fire({
 		  title: '<strong>Copying Directory</strong>',
 		  icon: 'warning',
@@ -174,21 +138,49 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').html(htmlProgress);
 	} else if (msg.op == 'stop_directory_copy') {
 		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').text('');
-	} else if (msg.op == 'error') {
-		console.error('ZFS Master daemon error:', msg.data.message);
-		Swal2.fire({title: 'ZFS Master Error', icon: 'error', text: msg.data.message});
 	}
 
 	processHiddenDatasets();
-  });
+	} catch (error) {
+		console.error('ZFS Master copy-progress message failed', error);
+	}
+  }
 
   $(function() {
-	  zfs_sub.start();
-	  if (zfsm_config['refresh_interval'] > 0) {
-	  	requestRefresh();
-	  } else {
-		loadCache();
-	  }
+	try {
+		zfsm_inventory = createZFSMInventoryController({
+			url: '<?=$urlzmadmin?>', csrf: zfsm_csrf_token, config: zfsm_config,
+			status: zfsmStatus,
+			configChanged: function(config) { zfsm_config = config; },
+			spinner: function(active) {
+				$('#zfsm-refresh').removeClass(active ? 'fa-refresh fa-arrows-rotate' : 'fa-spinner fa-spin')
+					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
+			},
+			render: function(data, complete) {
+				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
+				processHiddenDatasets();
+				if (complete) saveCache(data);
+			}
+		});
+		installZFSMActionRefresh(requestRefresh);
+		if (Number(zfsm_config.refresh_interval) === 0) {
+			if (!loadCache()) zfsmStatus('Automatic refresh is disabled and no cached data is available. Click Refresh to load pools.');
+		} else {
+			requestRefresh();
+		}
+	} catch (error) {
+		console.error('ZFS Master startup failed', error);
+		zfsmStatus('ZFS Master startup failed: '+error.message, true);
+	}
+	// Optional progress feed: its absence cannot block inventory or actions.
+	try {
+		zfs_sub = new NchanSubscriber('/sub/zfs_master',{subscriber:'websocket'});
+		zfs_sub.on('message', zfsmHandleMessage);
+		zfs_sub.start();
+	} catch (error) {
+		console.warn('ZFS Master live copy progress is unavailable', error);
+	}
+	window.addEventListener('pagehide', function() { if (zfsm_inventory) zfsm_inventory.stop(); });
   });
 
   $(document).click(function() {
@@ -196,7 +188,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   })
 
   function requestRefresh() {
-	  $.post('<?=$urlzmadmin?>', {cmd: 'refresh', csrf_token: zfsm_csrf_token} );
+	if (zfsm_inventory) zfsm_inventory.refresh();
   }
   
   function replaceElementClass(element, oldClass, newClass){
@@ -259,8 +251,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function loadCache() {
 	var data = loadFromLocalStorage('zfsm-cache');
 
-	if (data === null) {
-		return;
+	if (!data || typeof data !== 'object' || !data.pools || !data.datasets || !data.devices) {
+		return false;
 	}
 
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
@@ -268,12 +260,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	$('#zfsm-last-refresh').text('Last refresh at '+data.timestamp);
 
 	processHiddenDatasets();
+	return true;
   }
 
   function processHiddenDatasets() {
 	var datasets = loadFromLocalStorage('zfsm-datasetsHidden');
 	
-	if (datasets === null || datasets.hidden.length <= 0)
+	if (!datasets || !Array.isArray(datasets.hidden) || datasets.hidden.length <= 0)
 		return;
 
 	for (let zdataset of datasets.hidden) {

@@ -18,11 +18,12 @@ $routes = array(
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
-$_SERVER['DOCUMENT_ROOT'] = '/usr/local/emhttp';
+$docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
+$_SERVER['DOCUMENT_ROOT'] = $docroot;
 $_POST = $routes[$route];
 
 ob_start();
-require '/usr/local/emhttp/plugins/zfs.master/backend/ZFSMAdmin.php';
+require $docroot.'/plugins/zfs.master/backend/ZFSMAdmin.php';
 $output = ob_get_clean();
 $answer = json_decode($output, true);
 if (!is_array($answer) || !isset($answer['succeeded'], $answer['failed']) || count($answer['failed']) !== 0 || count($answer['succeeded']) === 0) {
@@ -30,4 +31,3 @@ if (!is_array($answer) || !isset($answer['succeeded'], $answer['failed']) || cou
 	exit(1);
 }
 echo $route." route passed\n";
-

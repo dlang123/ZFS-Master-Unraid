@@ -126,6 +126,8 @@ $iters = 0;
 
 while (true) {
     try {
+    // This is a long-running process; configuration and refresh flags change externally.
+    clearstatcache();
     if ($iters > 15):
         if (is_file($config_file) && is_readable($config_file)):
             if (filemtime($config_file) != $zfsm_cfg_timestamp):

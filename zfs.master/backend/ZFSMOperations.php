@@ -11,7 +11,7 @@ if (is_file($unraid_helpers)) require_once $unraid_helpers;
 if (is_file($unraid_publish)) require_once $unraid_publish;
 
 function refreshData() {
-	touch('/tmp/zfsm_reload');
+	return touch('/tmp/zfsm_reload');
 }
 
 function buildArrayRet() {
@@ -243,11 +243,15 @@ function removeFromDirectoryListing($zdataset) {
 	return $ret;
 }
 
-function getZFSPools() {
+function getZFSPools($strict = false) {
 	$ret_pools = array();
 	$result = runProcess('zpool', array('list', '-H', '-o', 'name,size,alloc,free,health'));
 	if (($result['code'] ?? 1) !== 0) {
-		if (stripos($result['output'] ?? '', 'no pools available') === false) error_log('ZFS Master pool inventory failed: '.($result['output'] ?? 'unknown error'));
+		if (stripos($result['output'] ?? '', 'no pools available') === false) {
+			$error = 'ZFS Master pool inventory failed: '.($result['output'] ?? 'unknown error');
+			if ($strict) throw new RuntimeException($error);
+			error_log($error);
+		}
 		return $ret_pools;
 	}
 	foreach (preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array() as $line) {
@@ -256,6 +260,41 @@ function getZFSPools() {
 		$ret_pools[$parts[0]] = array('Pool' => $parts[0], 'Health' => $parts[4], 'Name' => '', 'Size' => $parts[1], 'MountPoint' => '', 'Refer' => '', 'Used' => $parts[2], 'Free' => $parts[3], 'Snapshots' => 0, 'Origin' => '');
 	}
 	return $ret_pools;
+}
+
+// HTTP inventory must not depend on a running daemon or Unraid's publish flag.
+// The optional pool limits the second, progressive snapshot-loading phase.
+function zfsmReadInventory($config, $include_snapshots = true, $pool = '') {
+	$previous_deadline = $GLOBALS['zfsm_inventory_deadline'] ?? null;
+	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 45;
+	try {
+		return zfsmCollectInventory($config, $include_snapshots, $pool);
+	} finally {
+		if ($previous_deadline === null) unset($GLOBALS['zfsm_inventory_deadline']);
+		else $GLOBALS['zfsm_inventory_deadline'] = $previous_deadline;
+	}
+}
+
+function zfsmCollectInventory($config, $include_snapshots, $pool) {
+	if ($pool !== '' && !zfsmValidPoolName($pool)) throw new InvalidArgumentException('Invalid pool name');
+	$pools = getZFSPools(true);
+	if ($pool !== '') {
+		if (!isset($pools[$pool])) throw new RuntimeException('Pool is no longer imported: '.$pool);
+		$pools = array($pool => $pools[$pool]);
+	}
+	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
+	foreach ($pools as $name => $info) {
+		$data['devices'][$name] = getZFSPoolDevices($name);
+		$loader = $include_snapshots ? 'getZFSPoolDatasetsAndSnapshots' : 'getZFSPoolDatasets';
+		$tree = $loader($name, $config['dataset_exclusion'], $config['znapzend_data'], $config['directory_listing']);
+		$data['datasets'][$name] = $tree;
+		$data['pools'][$name]['MountPoint'] = $tree['mountpoint'] ?? '';
+		$data['pools'][$name]['Snapshots'] = $include_snapshots ? ($tree['total_snapshots'] ?? 0) : null;
+		foreach (array('_error', '_snapshot_error') as $key) {
+			if (!empty($tree[$key])) $data['errors'][$name] = ($data['errors'][$name] ?? '').$tree[$key].' ';
+		}
+	}
+	return array('op' => $include_snapshots ? 'getAll' : 'getDatasets', 'data' => $data);
 }
 
 function getZFSPoolDevices($zpool) {

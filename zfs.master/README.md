@@ -17,6 +17,24 @@ This fork has been updated and modernized to ensure full compatibility with mode
 ### Requirements
 * Unraid **7.3.2 or newer** with a native ZFS pool.
 
+### Inventory delivery (2026.09.25.112)
+Dataset and snapshot inventory now returns directly from the authenticated plugin
+HTTP endpoint. It does not require the Unraid API, the Nchan inventory daemon, or
+changes to `/tmp/publishPaused`. The Main page no longer starts the inventory daemon.
+Nchan is only an optional live directory-copy progress feed; final action results
+still return through HTTP.
+
+Automatic refresh follows the configured interval after each request completes,
+and pauses scans while the page is hidden. Manual mode does not scan on page load;
+use Refresh or perform an action. Successful actions refresh the parent table,
+including actions in popups. Lazy loading displays datasets first, then retrieves
+snapshots one pool at a time. Read requests have a 45-second CLI budget and a
+60-second browser timeout. Failures retain existing rows and mark them as stale.
+
+Installation and removal no longer reload nginx. This fixes the plugin's dependency
+on push delivery; it does not repair a stuck Unraid API/PM2 service. If publishing is
+paused, the page reports that condition alongside the direct-inventory result.
+
 ### Support & Donations
 If you find this updated fork helpful, donations are appreciated:
 [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/DML)

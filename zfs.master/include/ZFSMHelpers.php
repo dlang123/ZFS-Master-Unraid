@@ -74,6 +74,17 @@ function runProcess($command, $args = array(), $stdin = null) {
 		2 => array('redirect', 1)
 	);
 	$cmd = array_merge(array($command), array_values($args));
+	// HTTP inventory gets a shared wall-clock budget, including blocked ZFS CLI
+	// calls. Never apply a timeout to administrative/mutating commands.
+	$inventory_deadline = $GLOBALS['zfsm_inventory_deadline'] ?? null;
+	if ($inventory_deadline !== null) {
+		$remaining = $inventory_deadline - microtime(true);
+		if ($remaining <= 0) throw new RuntimeException('ZFS inventory timed out');
+		$timeout = is_executable('/usr/bin/timeout') ? '/usr/bin/timeout' : '/bin/timeout';
+		if (!is_executable($timeout)) throw new RuntimeException('The system timeout utility is unavailable');
+		$duration = number_format(max(0.001, $remaining), 3, '.', '').'s';
+		$cmd = array_merge(array($timeout, '--signal=TERM', '--kill-after=2s', $duration), $cmd);
+	}
 	$pipes = array();
 	$process = @proc_open($cmd, $descriptor_spec, $pipes, null, null, array('bypass_shell' => true));
 
@@ -88,6 +99,7 @@ function runProcess($command, $args = array(), $stdin = null) {
 	$output = stream_get_contents($pipes[1]);
 	fclose($pipes[1]);
 	$code = proc_close($process);
+	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException('ZFS inventory timed out while running '.basename($command));
 
 	return array('code' => $code, 'output' => trim((string)$output));
 }
